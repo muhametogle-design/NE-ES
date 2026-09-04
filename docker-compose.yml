@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: schoolsystem
+      POSTGRES_PASSWORD: schoolsystem
+      POSTGRES_DB: schoolsystem
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://schoolsystem:schoolsystem@postgres:5432/schoolsystem
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
+      APP_ENV: production
+      AUTO_SEED_DEMO: "true"
+      PLATFORM_TIMEZONE: Africa/Nairobi
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
