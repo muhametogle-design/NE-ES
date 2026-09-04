@@ -1,0 +1,30 @@
+{
+  "name": "NE-EMIS Dev Container",
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+  "service": "api",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": [
+          "tests"
+        ]
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-azuretools.vscode-docker",
+        "bradlc.vscode-tailwindcss",
+        "qwtel.sqlite-viewer",
+        "rangav.vscode-thunder-client"
+      ]
+    }
+  },
+  "forwardPorts": [8000, 5432],
+  "postCreateCommand": "pip install -r requirements-dev.txt && (cd web && npm install && npm run build) && python -m scripts.seed_data"
+}
