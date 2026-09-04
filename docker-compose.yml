@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,19 +9,68 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U schoolsystem"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ne_emis
 
   api:
     build: .
+    # Alias so the Vite proxy can target http://backend:8000 from inside Docker.
+    hostname: backend
     environment:
       DATABASE_URL: postgresql+psycopg2://schoolsystem:schoolsystem@postgres:5432/schoolsystem
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
       APP_ENV: production
       AUTO_SEED_DEMO: "true"
       PLATFORM_TIMEZONE: Africa/Nairobi
+      CORS_ORIGINS_RAW: >-
+        http://localhost:5173,http://127.0.0.1:5173,http://192.168.0.139:5173,http://172.31.80.1:5173,http://localhost:8000,http://127.0.0.1:8000
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    # Bind on all interfaces inside the container, publish on all host interfaces.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
+    networks:
+      ne_emis:
+        aliases:
+          - backend
+
+  # Vite dev server. Only started with the "dev" profile:
+  #   docker compose --profile dev up
+  web:
+    image: node:20-bookworm-slim
+    working_dir: /app/web
+    profiles: ["dev"]
+    environment:
+      # Proxy target resolves over the compose network, not localhost.
+      VITE_API_TARGET: http://backend:8000
+      # Bind mounts on Docker Desktop/WSL need polling for file watching.
+      VITE_USE_POLLING: "true"
+      VITE_HMR_HOST: localhost
+      VITE_HMR_CLIENT_PORT: "5173"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/web/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
+    # 0.0.0.0 on the host side guarantees localhost AND LAN IPs answer.
+    ports:
+      - "0.0.0.0:5173:5173"
+    depends_on:
+      - api
+    networks:
+      - ne_emis
 
 volumes:
   postgres_data:
+  web_node_modules:
+
+networks:
+  ne_emis:
+    driver: bridge

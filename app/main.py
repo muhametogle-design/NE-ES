@@ -86,14 +86,49 @@ app = FastAPI(
 # Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-cors_origins = [o.strip() for o in settings.CORS_ORIGINS_RAW.split(",")] if settings.CORS_ORIGINS_RAW != "*" else ["*"]
+# --- CORS -------------------------------------------------------------------
+# Browsers reject allow_origins=["*"] combined with allow_credentials=True, so we
+# always ship an explicit dev allow-list and fall back to a regex for LAN/dev hosts.
+DEV_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://192.168.0.139:5173",
+    "http://172.31.80.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+configured = [
+    o.strip()
+    for o in settings.CORS_ORIGINS_RAW.split(",")
+    if o.strip() and o.strip() != "*"
+]
+
+# Preserve order, drop duplicates.
+cors_origins = list(dict.fromkeys(DEV_ORIGINS + configured))
+
+# Any private-LAN address on the Vite/API dev ports (covers changing DHCP IPs).
+cors_origin_regex = (
+    r"^http://(localhost|127\.0\.0\.1|"
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+    r"192\.168\.\d{1,3}\.\d{1,3}|"
+    r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})"
+    r"(:(5173|3000|8000))?$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Total-Count"],
+    max_age=600,
 )
+logger.info("CORS allow-list active for %d explicit origins.", len(cors_origins))
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
