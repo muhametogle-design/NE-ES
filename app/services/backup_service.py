@@ -82,7 +82,10 @@ class BackupService:
             f.write(encrypted_data)
 
         sha256_hash = hashlib.sha256(encrypted_data).hexdigest()
-        md5_hash = hashlib.md5(encrypted_data).hexdigest()
+        # MD5 kept solely as a legacy integrity checksum for external tooling;
+        # explicitly marked non-security use (bandit B324) — SHA-256 above is
+        # the security-relevant checksum.
+        md5_hash = hashlib.md5(encrypted_data, usedforsecurity=False).hexdigest()
         file_size = len(encrypted_data)
 
         record = BackupRecord(

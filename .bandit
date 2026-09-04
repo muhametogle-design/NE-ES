@@ -1,0 +1,18 @@
+# Bandit project configuration — keeps local runs consistent with CI.
+#
+# CI gate (see .github/workflows/ci.yml) runs:
+#     bandit -r app -ll
+# i.e. scans app/ and fails on MEDIUM and HIGH severity findings.
+# The severity threshold is a CLI flag (-ll), so replicate it locally with:
+#     bandit -c .bandit -r app -ll
+[bandit]
+exclude_dirs =
+    .git,
+    .venv,
+    venv,
+    node_modules,
+    web,
+    frontend,
+    tests,
+    data,
+    migrations

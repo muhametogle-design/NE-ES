@@ -12,14 +12,26 @@ from app.services.seed import seed_demo_data
 from app.core.ratelimit import rate_limit
 from app.models.tenancy import User, PrivateSchool
 
-# In-memory SQLite for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+# Test database: real PostgreSQL when DATABASE_URL is provided (e.g. CI
+# service container), otherwise in-memory SQLite for fast local runs.
+def _test_database_url() -> str:
+    url = os.environ.get("DATABASE_URL", "").strip()
+    return url or "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+SQLALCHEMY_DATABASE_URL = _test_database_url()
+
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    # External engine (PostgreSQL etc.) handles its own pooling.
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,
+    )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="session", autouse=True)
