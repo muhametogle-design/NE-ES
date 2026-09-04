@@ -1,16 +1,24 @@
-"""Authentication endpoints: login, current user, and registration helpers."""
-from __future__ import annotations
+"""Authentication endpoints: login, current user, and registration helpers.
+
+NOTE: This module deliberately does NOT use ``from __future__ import
+annotations``. The two login endpoints are wrapped by slowapi's
+``@limiter.limit`` decorator; FastAPI re-evaluates PEP-563 string annotations in
+the wrapper's namespace (where the dependency symbols don't exist), which would
+silently turn the form/db dependencies into query parameters. Runtime
+``Depends()`` defaults and real annotations keep them working regardless.
+"""
 
 from datetime import timedelta
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession, require_roles
 from app.core.config import settings
+from app.core.database import get_db
+from app.core.ratelimit import limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
@@ -50,17 +58,37 @@ def _issue_token(user: User) -> Token:
 
 
 @router.post("/login", response_model=Token, summary="OAuth2 password login")
+@limiter.limit(
+    settings.login_rate_limit,
+    exempt_when=lambda: not settings.rate_limit_enabled,
+)
 def login_oauth2(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    db: DbSession,
+    request: Request,  # required by slowapi for per-IP rate limiting
+    response: Response,  # required by slowapi to inject X-RateLimit-* headers
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
 ) -> Token:
-    """Standard OAuth2 form login (``username`` field carries the email)."""
+    """Standard OAuth2 form login (``username`` field carries the email).
+
+    Rate limited per client IP (default ``NE_EMIS_LOGIN_RATE_LIMIT=5/minute``).
+    Exceeding the limit returns HTTP 429 with ``Retry-After`` and
+    ``X-RateLimit-*`` headers.
+    """
     user = _authenticate(db, form_data.username, form_data.password)
     return _issue_token(user)
 
 
 @router.post("/login/json", response_model=Token, summary="JSON login")
-def login_json(payload: LoginRequest, db: DbSession) -> Token:
+@limiter.limit(
+    settings.login_rate_limit,
+    exempt_when=lambda: not settings.rate_limit_enabled,
+)
+def login_json(
+    request: Request,
+    response: Response,  # required by slowapi to inject X-RateLimit-* headers
+    payload: LoginRequest = Body(...),
+    db: Session = Depends(get_db),
+) -> Token:
     """Convenience JSON login for frontends that don't send form data."""
     user = _authenticate(db, payload.email, payload.password)
     return _issue_token(user)

@@ -132,6 +132,49 @@ Seeded automatically on first boot (override via env vars):
 | PATCH/DELETE | `/finance/invoices/{id}` | Update / void                        |
 | GET/POST | `/finance/payments`         | Recent payments / record payment     |
 
+## Database migrations (Alembic)
+
+Schema changes are managed by Alembic. `alembic/env.py` imports
+`Base.metadata` from `app.core.database` plus all model modules
+(`app.models.user`, `app.models.student`, `app.models.finance`) and resolves the
+database URL from `NE_EMIS_DATABASE_URL`/`DATABASE_URL` or
+`app.core.config.settings` — nothing is hard-coded in `alembic.ini`.
+
+```bash
+alembic upgrade head                          # apply migrations
+alembic revision --autogenerate -m "change"   # generate a new migration
+alembic downgrade -1                          # roll back one step
+alembic current / alembic history
+```
+
+The baseline migration (`alembic/versions/0001_baseline_schema.py`) creates the
+`users`, `students`, `invoices` and `payments` tables with indexes, foreign keys
+and enums. The dev container runs `alembic upgrade head` automatically in
+`postCreateCommand`; production deployments must run it before the first boot
+(the app skips `create_all` when `NE_EMIS_ENV=production` and refuses to serve
+an un-migrated database).
+
+## Production security hardening
+
+| Control | Behavior |
+| --- | --- |
+| Secret-key validation | With `NE_EMIS_ENV=production`, startup fails unless `NE_EMIS_SECRET_KEY` is ≥32 chars and not a known weak/placeholder value (`admin1234`, `change-me`, `insecure`, …). Generate with `openssl rand -hex 32`. |
+| CORS lockdown | Production rejects wildcard (`*`) and non-`https` origins; only origins in `NE_EMIS_CORS_ORIGINS` are reflected in `Access-Control-Allow-Origin`. |
+| Security headers | Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `Content-Security-Policy: default-src 'self'` (dev uses an HMR/fonts-tolerant CSP) and `Referrer-Policy`. |
+| Login rate limiting | `/api/auth/login` and `/api/auth/login/json` are limited to **5 attempts/minute/IP** via slowapi (`NE_EMIS_LOGIN_RATE_LIMIT`); breaches return HTTP 429 with `Retry-After` + `X-RateLimit-*` headers. Run uvicorn with `--proxy-headers` behind a reverse proxy so client IPs are read from `X-Forwarded-For`. |
+| Schema discipline | Production disables auto-`create_all`; Alembic is the single source of truth for the schema. |
+
+Minimal production environment:
+
+```bash
+NE_EMIS_ENV=production
+NE_EMIS_SECRET_KEY=$(openssl rand -hex 32)
+NE_EMIS_DATABASE_URL=postgresql+psycopg://neemis:***@db:5432/neemis
+NE_EMIS_CORS_ORIGINS='["https://emis.yourschool.edu"]'
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+```
+
 ## Architecture notes
 
 - **Auth**: `OAuth2PasswordBearer` issues HS256 JWTs (`python-jose`); passwords

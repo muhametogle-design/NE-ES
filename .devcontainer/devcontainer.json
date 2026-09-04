@@ -59,7 +59,7 @@
     }
   },
 
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postCreateCommand": "bash .devcontainer/post-create.sh && alembic upgrade head",
 
   "remoteEnv": {
     "NE_EMIS_ENV": "development"

@@ -25,6 +25,9 @@ services:
       # NE_EMIS_DATABASE_URL: "postgresql+psycopg://neemis:neemis@db:5432/neemis"
       # --- CORS ---
       NE_EMIS_CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
+      # --- Rate limiting (slowapi) ---
+      NE_EMIS_RATE_LIMIT_ENABLED: "true"
+      NE_EMIS_LOGIN_RATE_LIMIT: "5/minute"
       # --- Seed admin (created on first boot if no users exist) ---
       NE_EMIS_SEED_ADMIN_EMAIL: "admin@neemis.edu"
       NE_EMIS_SEED_ADMIN_PASSWORD: "admin1234"
