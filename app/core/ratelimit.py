@@ -1,19 +1,42 @@
-"""Shared slowapi rate limiter.
+import time
+from collections import defaultdict
+from functools import wraps
+from fastapi import HTTPException, Request
 
-Wired into the FastAPI app in ``app.main`` (middleware + exception handler)
-and applied per-route via ``@limiter.limit(...)`` — see ``app.api.auth``.
+class RateLimiter:
+    def __init__(self):
+        self.requests = defaultdict(list)
 
-Keys are the client IP. When running behind a reverse proxy (nginx, Docker
-ingress, load balancer), launch uvicorn with ``--proxy-headers`` so
-``X-Forwarded-For`` is honoured instead of the proxy's address.
-"""
-from __future__ import annotations
+    def reset(self):
+        self.requests.clear()
 
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+    def is_allowed(self, client_ip: str, max_requests: int, window_seconds: int) -> bool:
+        now = time.time()
+        self.requests[client_ip] = [t for t in self.requests[client_ip] if now - t < window_seconds]
+        if len(self.requests[client_ip]) >= max_requests:
+            return False
+        self.requests[client_ip].append(now)
+        return True
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[],          # global default off; limits are opt-in per route
-    headers_enabled=True,       # emit X-RateLimit-* headers
-)
+    def __call__(self, max_requests: int = 5, window_seconds: int = 300):
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                request: Request = kwargs.get("request")
+                if not request:
+                    for arg in args:
+                        if isinstance(arg, Request):
+                            request = arg
+                            break
+                if request:
+                    client_ip = request.client.host if request.client else "127.0.0.1"
+                    if not self.is_allowed(client_ip, max_requests, window_seconds):
+                        raise HTTPException(
+                            status_code=429,
+                            detail="Too many login attempts. Please wait before trying again."
+                        )
+                return await func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+rate_limit = RateLimiter()

@@ -1,65 +1,49 @@
-"""Security primitives: password hashing and JWT issuance/verification."""
-from __future__ import annotations
-
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, VerificationError
+import jwt
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
-
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-
+from typing import Optional, Dict, Any
 from app.core.config import settings
 
-# ---------------------------------------------------------------------------
-# Password hashing — bcrypt via passlib
-# ---------------------------------------------------------------------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ph = PasswordHasher(
+    time_cost=2,
+    memory_cost=19456,
+    parallelism=1,
+    hash_len=32,
+    salt_len=16
+)
 
-
-def hash_password(plain_password: str) -> str:
-    """Return a bcrypt hash of ``plain_password``."""
-    return pwd_context.hash(plain_password)
-
+def hash_password(password: str) -> str:
+    return ph.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plaintext password against a stored bcrypt hash."""
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-# ---------------------------------------------------------------------------
-# JWT access tokens
-# ---------------------------------------------------------------------------
-def create_access_token(
-    subject: str | int,
-    expires_delta: Optional[timedelta] = None,
-    extra_claims: Optional[dict[str, Any]] = None,
-) -> str:
-    """Create a signed JWT access token.
-
-    :param subject: token subject — typically the user id (as string).
-    :param expires_delta: optional override for token lifetime.
-    :param extra_claims: additional claims (e.g. ``role``, ``email``).
-    """
-    now = datetime.now(timezone.utc)
-    expire = now + (
-        expires_delta
-        or timedelta(minutes=settings.access_token_expire_minutes)
-    )
-    payload: dict[str, Any] = {
-        "sub": str(subject),
-        "iat": int(now.timestamp()),
-        "exp": expire,
-        **(extra_claims or {}),
-    }
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
-
-
-def decode_access_token(token: str) -> Optional[dict[str, Any]]:
-    """Decode and verify a JWT. Returns claims dict or ``None`` on failure."""
+    if not plain_password or not hashed_password:
+        return False
     try:
-        return jwt.decode(
-            token,
-            settings.secret_key,
-            algorithms=[settings.algorithm],
-        )
-    except JWTError:
+        ph.verify(hashed_password, plain_password)
+        return True
+    except (VerifyMismatchError, VerificationError, Exception):
+        return False
+
+def hash_pin(pin: str) -> str:
+    return hash_password(pin)
+
+def verify_pin(plain_pin: str, hashed_pin: str) -> bool:
+    return verify_password(plain_pin, hashed_pin)
+
+def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return encoded_jwt
+
+def decode_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        return payload
+    except (jwt.PyJWTError, Exception):
         return None

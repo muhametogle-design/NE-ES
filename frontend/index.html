@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NE-EMIS Administrative Terminal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif; }
+  </style>
+</head>
+<body class="p-6">
+  <div class="max-w-6xl mx-auto space-y-6">
+    <header class="flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+      <div class="flex items-center gap-4">
+        <div class="h-12 w-12 bg-emerald-500 rounded-xl flex items-center justify-center font-black text-2xl text-slate-950">NE</div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">NE-EMIS Executive Admin Terminal</h1>
+          <p class="text-xs text-slate-400">North-East EMIS Management &amp; State Compliance Hub</p>
+        </div>
+      </div>
+      <div id="auth-status" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+        Status: Unauthenticated
+      </div>
+    </header>
+
+    <div id="app" class="space-y-6">
+      <!-- Dynamic JS will render dashboard and interactive control panels -->
+    </div>
+  </div>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

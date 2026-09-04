@@ -1,94 +1,29 @@
-# =============================================================================
-# NE-EMIS — Docker Compose (development)
-#   app  : FastAPI backend on :8000 (uvicorn, auto-reload)
-#   web  : Vite/React dev server on :5173 (HMR)
-#   db   : PostgreSQL 16 (optional; SQLite is used by default when omitted)
-# =============================================================================
+version: '3.8'
+
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ne-emis-api
-    working_dir: /workspace
-    volumes:
-      - .:/workspace:cached
-    ports:
-      - "8000:8000"
-    environment:
-      # --- App ---
-      NE_EMIS_ENV: development
-      NE_EMIS_SECRET_KEY: "change-me-in-production-09f8c2a1b7e64d3a9f5c8e2d1a0b7f64"
-      NE_EMIS_ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
-      # --- Database: leave as-is for SQLite, or switch to the Postgres URL ---
-      NE_EMIS_DATABASE_URL: "sqlite:///./ne_emis.db"
-      # NE_EMIS_DATABASE_URL: "postgresql+psycopg://neemis:neemis@db:5432/neemis"
-      # --- CORS ---
-      NE_EMIS_CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
-      # --- Rate limiting (slowapi) ---
-      NE_EMIS_RATE_LIMIT_ENABLED: "true"
-      NE_EMIS_LOGIN_RATE_LIMIT: "5/minute"
-      # --- Seed admin (created on first boot if no users exist) ---
-      NE_EMIS_SEED_ADMIN_EMAIL: "admin@neemis.edu"
-      NE_EMIS_SEED_ADMIN_PASSWORD: "admin1234"
-    command: >
-      uvicorn app.main:app
-      --host 0.0.0.0
-      --port 8000
-      --reload
-      --reload-dir /workspace/app
-    depends_on: []
-    networks:
-      - ne-emis-net
-
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ne-emis-web
-    working_dir: /workspace/web
-    volumes:
-      - .:/workspace:cached
-      # Keep the container's node_modules off the bind mount for performance
-      - /workspace/web/node_modules
-    ports:
-      - "5173:5173"
-    environment:
-      # Vite uses the host-side origin for HMR; /api is proxied to the app
-      # service by vite.config.js. Inside the compose network the backend is
-      # reachable at http://app:8000.
-      VITE_API_BASE_URL: "/api"
-      VITE_API_PROXY_TARGET: "http://app:8000"
-      CHOKIDAR_USEPOLLING: "true"
-    command: >
-      sh -c "npm install --no-audit --no-fund &&
-             npm run dev -- --host 0.0.0.0 --port 5173"
-    depends_on:
-      - app
-    networks:
-      - ne-emis-net
-
-  # Optional PostgreSQL. Uncomment DATABASE_URL above to use it.
-  db:
+  postgres:
     image: postgres:16-alpine
-    container_name: ne-emis-db
-    restart: unless-stopped
-    volumes:
-      - ne-emis-pgdata:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: neemis
-      POSTGRES_PASSWORD: neemis
-      POSTGRES_DB: neemis
+      POSTGRES_USER: schoolsystem
+      POSTGRES_PASSWORD: schoolsystem
+      POSTGRES_DB: schoolsystem
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    networks:
-      - ne-emis-net
-    profiles:
-      - db
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://schoolsystem:schoolsystem@postgres:5432/schoolsystem
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
+      APP_ENV: production
+      AUTO_SEED_DEMO: "true"
+      PLATFORM_TIMEZONE: Africa/Nairobi
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"
 
 volumes:
-  ne-emis-pgdata:
-
-networks:
-  ne-emis-net:
-    driver: bridge
+  postgres_data:

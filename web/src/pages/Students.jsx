@@ -1,439 +1,216 @@
-import { motion } from 'framer-motion'
-import {
-  ChevronLeft,
-  ChevronRight,
-  GraduationCap,
-  Loader2,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  Users,
-} from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import client from '../api/client'
-import {
-  EmptyState,
-  ErrorBanner,
-  Modal,
-  Spinner,
-  StatusBadge,
-} from '../components/ui.jsx'
+import React, { useState, useEffect } from 'react';
+import { api } from '../api/client';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input, Select } from '../components/ui/Input';
+import { Badge } from '../components/ui/Badge';
+import { StudentModal } from '../components/StudentModal';
+import { Search, UserPlus, Trash2, Edit2, CheckCircle2 } from 'lucide-react';
 
-const EMPTY_FORM = {
-  admission_no: '',
-  first_name: '',
-  last_name: '',
-  email: '',
-  phone: '',
-  gender: '',
-  grade: '',
-  guardian_name: '',
-  guardian_phone: '',
-  address: '',
-  status: 'active',
-}
+export function Students() {
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-export default function Students() {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [students, setStudents] = useState([])
-  const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 })
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null);
 
-  const [search, setSearch] = useState('')
-  const [grade, setGrade] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [grades, setGrades] = useState([])
-  const [page, setPage] = useState(1)
-
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState(null) // Student object or null
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState(null)
-
-  const PAGE_SIZE = 8
-
-  const fetchStudents = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const loadStudents = async () => {
     try {
-      const params = { page, page_size: PAGE_SIZE }
-      if (search.trim()) params.search = search.trim()
-      if (grade) params.grade = grade
-      if (statusFilter) params.status = statusFilter
-      const { data } = await client.get('/students', { params })
-      setStudents(data.items)
-      setMeta({ total: data.total, page: data.page, pages: data.pages })
-    } catch (err) {
-      setError(err.message)
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: String(page),
+        per_page: '15',
+        ...(search ? { q: search } : {}),
+        ...(selectedClass ? { class_id: selectedClass } : {}),
+      });
+      const data = await api.getStudents(params.toString());
+      setStudents(data.items || []);
+      setTotalPages(data.pages || 1);
+      setTotalCount(data.total || 0);
+    } catch (e) {
+      console.error(e);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [page, search, grade, statusFilter])
+  };
 
-  useEffect(() => {
-    fetchStudents()
-  }, [fetchStudents])
-
-  useEffect(() => {
-    client
-      .get('/students/grades')
-      .then(({ data }) => setGrades(data))
-      .catch(() => {})
-  }, [])
-
-  // Debounce search input.
-  const [searchInput, setSearchInput] = useState('')
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setSearch(searchInput)
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [searchInput])
-
-  const openCreate = () => {
-    setEditing(null)
-    setForm(EMPTY_FORM)
-    setFormError(null)
-    setModalOpen(true)
-  }
-
-  const openEdit = (student) => {
-    setEditing(student)
-    setForm({
-      ...EMPTY_FORM,
-      ...student,
-      email: student.email ?? '',
-      phone: student.phone ?? '',
-      gender: student.gender ?? '',
-      guardian_name: student.guardian_name ?? '',
-      guardian_phone: student.guardian_phone ?? '',
-      address: student.address ?? '',
-      date_of_birth: student.date_of_birth ?? '',
-    })
-    setFormError(null)
-    setModalOpen(true)
-  }
-
-  const handleChange = (field) => (e) =>
-    setForm((f) => ({ ...f, [field]: e.target.value }))
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setSaving(true)
-    setFormError(null)
-
-    // Strip blank optional fields so Pydantic doesn't choke on empty emails.
-    const payload = Object.fromEntries(
-      Object.entries(form).filter(([, v]) => v !== '' && v !== null),
-    )
-
+  const loadClasses = async () => {
     try {
-      if (editing) {
-        await client.patch(`/students/${editing.id}`, payload)
-      } else {
-        await client.post('/students', payload)
-      }
-      setModalOpen(false)
-      fetchStudents()
-    } catch (err) {
-      setFormError(err.message)
-    } finally {
-      setSaving(false)
+      const cls = await api.getClasses();
+      setClasses(cls || []);
+    } catch (e) {
+      console.error(e);
     }
-  }
+  };
 
-  const handleDelete = async (student) => {
-    if (!window.confirm(`Delete student "${student.full_name}" (${student.admission_no})?`))
-      return
-    try {
-      await client.delete(`/students/${student.id}`)
-      fetchStudents()
-    } catch (err) {
-      setError(err.message)
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  useEffect(() => {
+    loadStudents();
+  }, [page, search, selectedClass]);
+
+  const handleSaveStudent = async (studentData) => {
+    if (editingStudent) {
+      await api.updateStudent(editingStudent.roll_number, studentData);
+    } else {
+      await api.createStudent(studentData);
     }
-  }
+    loadStudents();
+  };
+
+  const handleDeleteStudent = async (rollNumber) => {
+    if (window.confirm(`Deactivate student ${rollNumber}?`)) {
+      await api.deleteStudent(rollNumber);
+      loadStudents();
+    }
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
-            Student Directory
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {meta.total} student{meta.total === 1 ? '' : 's'} on record
+          <h2 className="text-xl font-bold text-slate-900">Student Registry</h2>
+          <p className="text-xs text-slate-500">
+            Total active students enrolled: <span className="font-bold text-slate-800">{totalCount}</span>
           </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.03, y: -2 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={openCreate}
-          className="btn-primary"
+        <Button
+          onClick={() => {
+            setEditingStudent(null);
+            setModalOpen(true);
+          }}
+          className="flex items-center gap-1.5"
         >
-          <Plus className="h-4 w-4" />
-          New Student
-        </motion.button>
+          <UserPlus className="h-4 w-4" /> Enroll Student
+        </Button>
       </div>
 
-      <ErrorBanner message={error} onDismiss={() => setError(null)} />
-
-      {/* Filter bar */}
-      <div className="glass-panel flex flex-wrap items-center gap-3 p-4">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search name, email or admission no…"
-            className="glass-input pl-10"
-          />
+      {/* Filters */}
+      <Card>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="sm:col-span-2 relative">
+            <Input
+              placeholder="Search by student name or roll number..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <Select
+            value={selectedClass}
+            onChange={(e) => {
+              setSelectedClass(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All Class Streams</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                Grade {c.class_level} ({c.stream})
+              </option>
+            ))}
+          </Select>
         </div>
-        <select
-          value={grade}
-          onChange={(e) => {
-            setGrade(e.target.value)
-            setPage(1)
-          }}
-          className="glass-input w-auto min-w-[140px]"
-        >
-          <option value="">All grades</option>
-          {grades.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value)
-            setPage(1)
-          }}
-          className="glass-input w-auto min-w-[140px]"
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="graduated">Graduated</option>
-          <option value="suspended">Suspended</option>
-        </select>
-      </div>
+      </Card>
 
       {/* Table */}
-      <div className="glass-panel overflow-hidden">
-        {loading ? (
-          <div className="flex h-64 items-center justify-center text-brand-600">
-            <Spinner className="h-7 w-7" />
-          </div>
-        ) : students.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="No students found"
-            hint="Try adjusting filters or register a new student."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-white/70 bg-white/50 text-xs uppercase tracking-wider text-slate-500">
-                  <th className="px-5 py-3.5 font-semibold">Student</th>
-                  <th className="px-5 py-3.5 font-semibold">Admission No.</th>
-                  <th className="px-5 py-3.5 font-semibold">Grade</th>
-                  <th className="px-5 py-3.5 font-semibold">Guardian</th>
-                  <th className="px-5 py-3.5 font-semibold">Status</th>
-                  <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+            <tr>
+              <th className="px-4 py-3">Roll Number (NE-SID)</th>
+              <th className="px-4 py-3">Student Name</th>
+              <th className="px-4 py-3">Gender</th>
+              <th className="px-4 py-3">Class</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr>
+                <td colSpan="6" className="px-4 py-8 text-center text-slate-400">Loading student directory...</td>
+              </tr>
+            ) : students.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-4 py-8 text-center text-slate-400">No student records found.</td>
+              </tr>
+            ) : (
+              students.map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 font-mono font-bold text-slate-900">{s.roll_number}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-800">{s.first_name} {s.last_name}</td>
+                  <td className="px-4 py-3 text-slate-600">{s.gender}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {classes.find((c) => c.id === s.class_id)
+                      ? `Grade ${classes.find((c) => c.id === s.class_id).class_level} (${classes.find((c) => c.id === s.class_id).stream})`
+                      : 'Unassigned'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={s.is_active ? 'success' : 'danger'}>
+                      {s.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-right space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingStudent(s);
+                        setModalOpen(true);
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-800"
+                      title="Edit"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStudent(s.roll_number)}
+                      className="p-1 text-slate-400 hover:text-rose-600"
+                      title="Deactivate"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {students.map((s, i) => (
-                  <motion.tr
-                    key={s.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="border-b border-white/50 transition-colors last:border-0 hover:bg-white/60"
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">
-                          {s.first_name.charAt(0)}
-                          {s.last_name.charAt(0)}
-                        </div>
-                        <div className="leading-tight">
-                          <p className="font-semibold text-slate-800">
-                            {s.first_name} {s.last_name}
-                          </p>
-                          <p className="text-xs text-slate-500">{s.email || '—'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-slate-600">
-                      {s.admission_no}
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-700">{s.grade}</td>
-                    <td className="px-5 py-3.5 text-slate-600">
-                      {s.guardian_name ? (
-                        <span>
-                          {s.guardian_name}
-                          {s.guardian_phone && (
-                            <span className="block text-xs text-slate-400">
-                              {s.guardian_phone}
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <StatusBadge status={s.status} />
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => openEdit(s)}
-                          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-brand-50 hover:text-brand-600"
-                          aria-label="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleDelete(s)}
-                          className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
-                          aria-label="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </motion.button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
 
         {/* Pagination */}
-        {meta.pages > 1 && (
-          <div className="flex items-center justify-between border-t border-white/60 bg-white/40 px-5 py-3">
-            <p className="text-xs text-slate-500">
-              Page {meta.page} of {meta.pages}
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="btn-ghost px-3 py-2 disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                disabled={page >= meta.pages}
-                onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}
-                className="btn-ghost px-3 py-2 disabled:opacity-40"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs">
+            <span className="text-slate-500">Page {page} of {totalPages}</span>
+            <div className="space-x-1">
+              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                Previous
+              </Button>
+              <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                Next
+              </Button>
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* Create / Edit modal */}
-      <Modal
-        open={modalOpen}
+      <StudentModal
+        isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? 'Edit Student' : 'Register New Student'}
-        wide
-      >
-        <ErrorBanner message={formError} onDismiss={() => setFormError(null)} />
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
-            label="Admission No. *"
-            value={form.admission_no}
-            onChange={handleChange('admission_no')}
-            placeholder="NE-2026-007"
-            disabled={!!editing}
-            required
-          />
-          <Field label="Grade / Class *" value={form.grade} onChange={handleChange('grade')} placeholder="Grade 7" required />
-          <Field label="First name *" value={form.first_name} onChange={handleChange('first_name')} required />
-          <Field label="Last name *" value={form.last_name} onChange={handleChange('last_name')} required />
-          <Field label="Email" type="email" value={form.email} onChange={handleChange('email')} placeholder="student@school.edu" />
-          <Field label="Phone" value={form.phone} onChange={handleChange('phone')} />
-          <div>
-            <label className="glass-label">Gender</label>
-            <select className="glass-input" value={form.gender} onChange={handleChange('gender')}>
-              <option value="">—</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="glass-label">Status</label>
-            <select className="glass-input" value={form.status} onChange={handleChange('status')}>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="graduated">Graduated</option>
-              <option value="suspended">Suspended</option>
-            </select>
-          </div>
-          <Field label="Guardian name" value={form.guardian_name} onChange={handleChange('guardian_name')} />
-          <Field label="Guardian phone" value={form.guardian_phone} onChange={handleChange('guardian_phone')} />
-          <div className="sm:col-span-2">
-            <label className="glass-label">Address</label>
-            <textarea
-              rows={2}
-              className="glass-input resize-none"
-              value={form.address}
-              onChange={handleChange('address')}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 sm:col-span-2">
-            <button type="button" onClick={() => setModalOpen(false)} className="btn-ghost">
-              Cancel
-            </button>
-            <motion.button
-              type="submit"
-              disabled={saving}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="btn-primary"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  {editing ? (
-                    <Pencil className="h-4 w-4" />
-                  ) : (
-                    <GraduationCap className="h-4 w-4" />
-                  )}
-                  {editing ? 'Save changes' : 'Register student'}
-                </>
-              )}
-            </motion.button>
-          </div>
-        </form>
-      </Modal>
+        onSave={handleSaveStudent}
+        classes={classes}
+        initialData={editingStudent}
+      />
     </div>
-  )
-}
-
-function Field({ label, ...props }) {
-  return (
-    <div>
-      <label className="glass-label">{label}</label>
-      <input className="glass-input" {...props} />
-    </div>
-  )
+  );
 }

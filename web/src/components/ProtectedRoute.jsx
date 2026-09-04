@@ -1,17 +1,21 @@
-import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext.jsx'
+import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 
-/**
- * Gate for authenticated pages. Redirects to /login while preserving the
- * intended destination so the user lands back where they were after signing in.
- */
-export default function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth()
-  const location = useLocation()
+export function ProtectedRoute({ allowedRoles = [] }) {
+  const { user, token } = useSelector((state) => state.auth);
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />
+  if (!token && !user) {
+    return <Navigate to="/login" replace />;
   }
 
-  return children
+  if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
+    // Redirect based on role
+    if (['state_admin', 'inspector'].includes(user.role)) {
+      return <Navigate to="/state" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
 }

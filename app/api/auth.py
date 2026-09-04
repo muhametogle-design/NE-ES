@@ -1,128 +1,91 @@
-"""Authentication endpoints: login, current user, and registration helpers.
-
-NOTE: This module deliberately does NOT use ``from __future__ import
-annotations``. The two login endpoints are wrapped by slowapi's
-``@limiter.limit`` decorator; FastAPI re-evaluates PEP-563 string annotations in
-the wrapper's namespace (where the dependency symbols don't exist), which would
-silently turn the form/db dependencies into query parameters. Runtime
-``Depends()`` defaults and real annotations keep them working regardless.
-"""
-
-from datetime import timedelta
-
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, DbSession, require_roles
+from app.api.deps import get_current_user
 from app.core.config import settings
-from app.core.database import get_db
-from app.core.ratelimit import limiter
-from app.core.security import create_access_token, hash_password, verify_password
-from app.models.user import User, UserRole
-from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
+from app.core.db import get_db
+from app.core.security import hash_password, verify_password, hash_pin, verify_pin, create_access_token
+from app.core.ratelimit import rate_limit
+from app.models.tenancy import User
+from app.schemas.auth import LoginRequest, TokenResponse, UserResponse, ChangePasswordRequest, SetPinRequest
+from app.schemas.common import MessageResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+@router.post("/login", response_model=TokenResponse)
+@rate_limit(max_requests=settings.LOGIN_RATE_LIMIT, window_seconds=settings.LOGIN_RATE_WINDOW_SECONDS)
+async def login(request: Request, login_data: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    user = None
+    if login_data.email and login_data.password:
+        user = db.query(User).filter(User.email == login_data.email).first()
+        if not user or not verify_password(login_data.password, user.password_hash):
+            user = None
+    elif login_data.staff_identifier and login_data.pin:
+        user = db.query(User).filter(User.staff_identifier == login_data.staff_identifier).first()
+        if not user or not user.staff_pin_hash or not verify_pin(login_data.pin, user.staff_pin_hash):
+            user = None
 
-def _authenticate(db: Session, email: str, password: str) -> User:
-    user = db.scalar(select(User).where(User.email == email.lower().strip()))
-    if user is None or not verify_password(password, user.hashed_password):
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid credentials. Please verify your email/password or Staff ID/PIN.",
         )
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated. Contact an administrator.",
+            detail="User account is deactivated.",
         )
+
+    token = create_access_token({
+        "sub": str(user.id),
+        "role": user.role,
+        "school_id": user.school_id,
+        "email": user.email
+    })
+
+    secure_cookie = settings.COOKIE_SECURE == "true" or (
+        settings.COOKIE_SECURE == "auto" and settings.APP_ENV == "production"
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        secure=secure_cookie,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(user: User = Depends(get_current_user)):
     return user
 
+@router.post("/logout", response_model=MessageResponse)
+async def logout(response: Response):
+    response.delete_cookie(key="access_token")
+    return {"message": "Successfully logged out", "detail": "Session cookie cleared"}
 
-def _issue_token(user: User) -> Token:
-    expires = timedelta(minutes=settings.access_token_expire_minutes)
-    token = create_access_token(
-        subject=user.id,
-        expires_delta=expires,
-        extra_claims={"role": user.role.value, "email": user.email},
-    )
-    return Token(
-        access_token=token,
-        token_type="bearer",
-        expires_in=int(expires.total_seconds()),
-        user=UserRead.model_validate(user),
-    )
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(data: ChangePasswordRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
 
-
-@router.post("/login", response_model=Token, summary="OAuth2 password login")
-@limiter.limit(
-    settings.login_rate_limit,
-    exempt_when=lambda: not settings.rate_limit_enabled,
-)
-def login_oauth2(
-    request: Request,  # required by slowapi for per-IP rate limiting
-    response: Response,  # required by slowapi to inject X-RateLimit-* headers
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
-) -> Token:
-    """Standard OAuth2 form login (``username`` field carries the email).
-
-    Rate limited per client IP (default ``NE_EMIS_LOGIN_RATE_LIMIT=5/minute``).
-    Exceeding the limit returns HTTP 429 with ``Retry-After`` and
-    ``X-RateLimit-*`` headers.
-    """
-    user = _authenticate(db, form_data.username, form_data.password)
-    return _issue_token(user)
-
-
-@router.post("/login/json", response_model=Token, summary="JSON login")
-@limiter.limit(
-    settings.login_rate_limit,
-    exempt_when=lambda: not settings.rate_limit_enabled,
-)
-def login_json(
-    request: Request,
-    response: Response,  # required by slowapi to inject X-RateLimit-* headers
-    payload: LoginRequest = Body(...),
-    db: Session = Depends(get_db),
-) -> Token:
-    """Convenience JSON login for frontends that don't send form data."""
-    user = _authenticate(db, payload.email, payload.password)
-    return _issue_token(user)
-
-
-@router.get("/me", response_model=UserRead, summary="Current authenticated user")
-def read_me(current_user: CurrentUser) -> User:
-    return current_user
-
-
-@router.post(
-    "/register",
-    response_model=UserRead,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a staff account (admin only)",
-    dependencies=[Depends(require_roles(UserRole.admin))],
-)
-def register(payload: UserCreate, db: DbSession) -> User:
-    existing = db.scalar(
-        select(User).where(User.email == payload.email.lower().strip())
-    )
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists.",
-        )
-
-    user = User(
-        email=payload.email.lower().strip(),
-        full_name=payload.full_name,
-        hashed_password=hash_password(payload.password),
-        role=payload.role,
-    )
-    db.add(user)
+    user.password_hash = hash_password(data.new_password)
     db.commit()
-    db.refresh(user)
-    return user
+    return {"message": "Password changed successfully"}
+
+@router.post("/set-pin", response_model=MessageResponse)
+async def set_pin(data: SetPinRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if len(data.pin) < 4:
+        raise HTTPException(status_code=400, detail="PIN must be at least 4 digits")
+
+    user.staff_pin_hash = hash_pin(data.pin)
+    db.commit()
+    return {"message": "Staff PIN updated successfully"}

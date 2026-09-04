@@ -1,1 +1,1 @@
-"""Core infrastructure: configuration, database, security."""
+"""Core module initialization"""

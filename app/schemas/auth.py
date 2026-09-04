@@ -1,55 +1,38 @@
-"""Auth schemas: token payloads and user (de)serialization."""
-from __future__ import annotations
-
-from datetime import datetime
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+class LoginRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    staff_identifier: Optional[str] = None
+    pin: Optional[str] = None
 
-from app.models.user import UserRole
-
-
-# ---------------------------------------------------------------------------
-# Users
-# ---------------------------------------------------------------------------
-class UserBase(BaseModel):
-    email: EmailStr
-    full_name: str
-    role: UserRole = UserRole.staff
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserRead(UserBase):
-    model_config = ConfigDict(from_attributes=True)
-
+class UserResponse(BaseModel):
     id: int
-    is_active: bool
-    created_at: datetime
+    school_id: Optional[int] = None
+    email: str
+    role: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    staff_identifier: Optional[str] = None
+    is_department_head: bool = False
+    phone: Optional[str] = None
+    qualifications: Optional[str] = None
+    designation: Optional[str] = None
+    bio: Optional[str] = None
+    is_active: bool = True
 
+    class Config:
+        from_attributes = True
 
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-class Token(BaseModel):
-    """OAuth2-compatible token response."""
-
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int  # seconds
-    user: UserRead
+    user: UserResponse
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
-class TokenPayload(BaseModel):
-    sub: Optional[str] = None
-    role: Optional[str] = None
-    email: Optional[str] = None
-
-
-class LoginRequest(BaseModel):
-    """JSON login alternative (the OAuth2 form flow is also supported)."""
-
-    email: EmailStr
-    password: str
+class SetPinRequest(BaseModel):
+    pin: str

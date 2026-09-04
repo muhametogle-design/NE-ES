@@ -1,67 +1,33 @@
 {
-  "name": "NE-EMIS (FastAPI + React/Vite)",
-  "dockerComposeFile": ["../docker-compose.yml"],
-  "service": "app",
-  "workspaceFolder": "/workspace",
-  "shutdownAction": "stopCompose",
-
-  "forwardPorts": [8000, 5173],
-  "portsAttributes": {
-    "8000": {
-      "label": "FastAPI (NE-EMIS API)",
-      "onAutoForward": "notify",
-      "protocol": "https"
-    },
-    "5173": {
-      "label": "Vite Dev Server (NE-EMIS Web)",
-      "onAutoForward": "notify",
-      "protocol": "https"
-    }
-  },
-
+  "name": "NE-EMIS Dev Container",
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+  "service": "api",
+  "workspaceFolder": "/app",
   "customizations": {
     "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": [
+          "tests"
+        ]
+      },
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "ms-python.black-formatter",
-        "ms-python.flake8",
-        "ms-python.isort",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "dsznajder.es7-react-js-snippets",
-        "bradlc.vscode-tailwindcss",
+        "ms-python.debugpy",
         "ms-azuretools.vscode-docker",
-        "redhat.vscode-yaml",
-        "GitHub.copilot",
-        "GitHub.copilot-chat"
-      ],
-      "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.analysis.extraPaths": ["/workspace/app"],
-        "python.terminal.activateEnvironment": false,
-        "editor.formatOnSave": true,
-        "[python]": {
-          "editor.defaultFormatter": "ms-python.black-formatter",
-          "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
-          }
-        },
-        "[javascript]": {
-          "editor.defaultFormatter": "esbenp.prettier-vscode"
-        },
-        "[javascriptreact]": {
-          "editor.defaultFormatter": "esbenp.prettier-vscode"
-        },
-        "files.eol": "\n",
-        "terminal.integrated.defaultProfile.linux": "bash"
-      }
+        "bradlc.vscode-tailwindcss",
+        "qwtel.sqlite-viewer",
+        "rangav.vscode-thunder-client"
+      ]
     }
   },
-
-  "postCreateCommand": "bash .devcontainer/post-create.sh && alembic upgrade head",
-
-  "remoteEnv": {
-    "NE_EMIS_ENV": "development"
-  }
+  "forwardPorts": [
+    8000,
+    5432
+  ],
+  "postCreateCommand": "pip install -r requirements-dev.txt && (cd web && npm install && npm run build) && alembic upgrade head && python -m scripts.seed_data"
 }

@@ -2,12 +2,13 @@
 
 Database URL resolution (highest priority first):
     1. ``NE_EMIS_DATABASE_URL`` / ``DATABASE_URL`` environment variable
-    2. ``app.core.config.settings.database_url`` (pydantic-settings; reads .env)
+    2. ``app.core.config.settings.DATABASE_URL`` (reads .env / host environment)
 
 Target metadata:
-    ``app.core.database.Base.metadata`` — all models are imported explicitly
-    below so they register themselves on the declarative registry before
-    ``autogenerate``/``upgrade`` run.
+    ``app.models.base.Base.metadata`` — importing the ``app.models`` package
+    registers every model (tenancy, academic, finance, compliance, backups,
+    biometrics, absence, syllabus) on the declarative registry before
+    autogenerate/upgrade run.
 """
 from __future__ import annotations
 
@@ -18,11 +19,21 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 # ---------------------------------------------------------------------------
-# Import the declarative Base AND every model module so tables/enums register.
+# Import the declarative Base AND the models package so all tables register.
 # ---------------------------------------------------------------------------
 from app.core.config import settings  # noqa: E402
-from app.core.database import Base  # noqa: E402
-from app.models import finance, student, user  # noqa: E402,F401
+from app.models import Base  # noqa: E402  (re-exported from app.models.base)
+from app.models import (  # noqa: E402,F401
+    absence,
+    academic,
+    backups,
+    base,
+    biometrics,
+    compliance,
+    finance,
+    syllabus,
+    tenancy,
+)
 
 config = context.config
 
@@ -33,6 +44,7 @@ if config.config_file_name is not None:
 # Target metadata for autogenerate support.
 target_metadata = Base.metadata
 
+
 # ---------------------------------------------------------------------------
 # Resolve the database URL dynamically.
 # ---------------------------------------------------------------------------
@@ -41,15 +53,14 @@ def get_database_url() -> str:
     return (
         os.getenv("NE_EMIS_DATABASE_URL")
         or os.getenv("DATABASE_URL")
-        or settings.database_url
+        or settings.DATABASE_URL
     )
 
 
 DATABASE_URL = get_database_url()
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
-# SQLite connections need check_same_thread=False; Alembic opens short-lived
-# synchronous connections, but we mirror the engine kwargs for consistency.
+# SQLite needs batch mode (no native ALTER) and relaxed thread checks.
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 
@@ -62,7 +73,6 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
-        # Batch mode lets SQLite ALTER tables (no native DDL for many ops).
         render_as_batch=IS_SQLITE,
     )
 

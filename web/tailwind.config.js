@@ -1,49 +1,31 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: [
-          'Inter',
-          'ui-sans-serif',
-          'system-ui',
-          '-apple-system',
-          'Segoe UI',
-          'Roboto',
-          'sans-serif',
-        ],
-      },
       colors: {
         brand: {
-          50: '#eef4ff',
-          100: '#d9e6ff',
-          200: '#bcd3ff',
-          300: '#8eb6ff',
-          400: '#598dff',
-          500: '#3366ff',
-          600: '#1f47f5',
-          700: '#1735e1',
-          800: '#192db6',
-          900: '#1a2c8f',
+          50: '#f0fdf4',
+          100: '#dcfce7',
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
+          800: '#166534',
+          900: '#14532d',
         },
-      },
-      boxShadow: {
-        glass: '0 8px 32px rgba(31, 71, 245, 0.12)',
-        'glass-lg': '0 20px 60px rgba(31, 71, 245, 0.18)',
-      },
-      backdropBlur: {
-        xs: '2px',
-      },
-      keyframes: {
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-      },
-      animation: {
-        shimmer: 'shimmer 2s linear infinite',
-      },
+        state: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        }
+      }
     },
   },
   plugins: [],

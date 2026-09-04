@@ -1,160 +1,151 @@
-"""NE-EMIS — FastAPI application entrypoint.
-
-Run locally:
-    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-Production (behind a reverse proxy — enables X-Forwarded-* handling):
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
-
-Interactive docs:  http://localhost:8000/docs
-ReDoc:             http://localhost:8000/redoc
-
-Security hardening
-------------------
-* CORS origins are driven by settings and **strictly validated** in production
-  (explicit https origins only, never ``*``).
-* Every response carries ``X-Frame-Options``, ``X-Content-Type-Options``,
-  ``Strict-Transport-Security`` and ``Content-Security-Policy`` headers.
-* Auth login endpoints are rate limited (see ``app.core.ratelimit``).
-* In production the schema is managed by **Alembic** migrations —
-  ``Base.metadata.create_all`` is skipped so migrations cannot be bypassed.
-"""
-from __future__ import annotations
-
+import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import select
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, finance, students
 from app.core.config import settings
-from app.core.database import SessionLocal, init_db
-from app.core.ratelimit import limiter
-from app.core.security import hash_password
-from app.models.user import User, UserRole
+from app.core.db import init_db, SessionLocal, set_rls_context
+from app.core.ws import ws_manager
+from app.api.auth import router as auth_router
+from app.api.school import router as school_router
+from app.api.state import router as state_router
+from app.api.ws import router as ws_router
+from app.services.scheduler import compliance_scheduler, backup_scheduler
+from app.services.seed import seed_demo_data
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("ne_emis")
-logging.basicConfig(level=logging.INFO)
-
-
-def seed_admin() -> None:
-    """Create the seed administrator on first boot if no users exist."""
-    with SessionLocal() as db:
-        existing = db.scalar(select(User).limit(1))
-        if existing is not None:
-            return
-        admin = User(
-            email=settings.seed_admin_email.lower().strip(),
-            full_name=settings.seed_admin_full_name,
-            hashed_password=hash_password(settings.seed_admin_password),
-            role=UserRole.admin,
-        )
-        db.add(admin)
-        db.commit()
-        logger.info(
-            "Seeded admin account %s (change the password after first login!)",
-            settings.seed_admin_email,
-        )
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(
-        "Starting %s (env=%s, production=%s)",
-        settings.app_name,
-        settings.env,
-        settings.is_production,
-    )
-    if settings.is_production:
-        # Schema is owned by Alembic in production; run `alembic upgrade head`.
-        logger.info(
-            "Production mode: skipping auto-create_all — ensure "
-            "`alembic upgrade head` has been run."
-        )
-    else:
-        init_db()
-    seed_admin()
-    yield
-    logger.info("Shutting down %s", settings.app_name)
+    # 1. Initialize DB
+    init_db()
+    logger.info("Database schema verified and initialized.")
 
+    # 2. Bind event loop to WebSocket Manager
+    try:
+        loop = asyncio.get_running_loop()
+        ws_manager.set_loop(loop)
+    except Exception as e:
+        logger.warning(f"Could not bind loop to ws_manager: {e}")
+
+    # 3. Seed demo data if database is empty
+    if settings.AUTO_SEED_DEMO:
+        db = SessionLocal()
+        try:
+            from app.models.tenancy import PrivateSchool
+            count = db.query(PrivateSchool).count()
+            if count == 0:
+                set_rls_context(db, None, "state_admin")
+                seed_demo_data(db)
+                logger.info("Demo data automatically seeded for NE-EMIS network.")
+        except Exception as e:
+            logger.error(f"Seeding demo data failed: {e}", exc_info=True)
+            db.rollback()
+        finally:
+            db.close()
+
+    # 4. Start compliance audit scheduler
+    if settings.ENABLE_SCHEDULER:
+        compliance_scheduler.start()
+        logger.info("Compliance Audit Scheduler armed (15:00 EAT).")
+
+    # 5. Start backup scheduler
+    if settings.ENABLE_BACKUP_SCHEDULER:
+        backup_scheduler.start()
+        logger.info("Automated Backup Scheduler armed (00:00 EAT).")
+
+    # 6. Production configuration sanity check
+    if settings.APP_ENV == "production" and settings.JWT_SECRET_KEY.startswith("dev-"):
+        logger.warning("SECURITY ALERT: Production environment running with default JWT_SECRET_KEY!")
+
+    yield
+
+    # Shutdown hooks
+    if settings.ENABLE_SCHEDULER:
+        compliance_scheduler.stop()
+    if settings.ENABLE_BACKUP_SCHEDULER:
+        backup_scheduler.stop()
+    logger.info("Application shutdown completed.")
 
 app = FastAPI(
     title="NE-EMIS API",
-    description=(
-        "NE-EMIS — Education Management Information System. "
-        "JWT-secured REST API for student records and school finance."
-    ),
+    description="Private School Management & State Compliance Monitoring System",
     version="1.0.0",
-    lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url=f"{settings.api_v1_prefix}/openapi.json",
+    lifespan=lifespan
 )
 
-# ---------------------------------------------------------------------------
-# Rate limiting (slowapi) — wired before routes are served
-# ---------------------------------------------------------------------------
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+# Middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# ---------------------------------------------------------------------------
-# Security headers — applied to every response
-# ---------------------------------------------------------------------------
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = (
-        f"max-age={settings.hsts_max_age}; includeSubDomains"
-    )
-    response.headers["Content-Security-Policy"] = (
-        settings.content_security_policy or "default-src 'self'"
-    )
-    return response
-
-
-# ---------------------------------------------------------------------------
-# CORS — origins come from validated settings (TLS-only in production)
-# ---------------------------------------------------------------------------
+cors_origins = [o.strip() for o in settings.CORS_ORIGINS_RAW.split(",")] if settings.CORS_ORIGINS_RAW != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
-app.include_router(auth.router, prefix=settings.api_v1_prefix)
-app.include_router(students.router, prefix=settings.api_v1_prefix)
-app.include_router(finance.router, prefix=settings.api_v1_prefix)
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    return response
 
-
-@app.get("/", include_in_schema=False)
-def root() -> JSONResponse:
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled server exception on {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
-        {
-            "app": settings.app_name,
-            "version": "1.0.0",
-            "status": "ok",
-            "docs": "/docs",
-            "api": settings.api_v1_prefix,
-        }
+        status_code=500,
+        content={"detail": "Internal server error"},
     )
 
+# Include Routers
+app.include_router(auth_router, prefix="/api")
+app.include_router(school_router, prefix="/api")
+app.include_router(state_router, prefix="/api")
+app.include_router(ws_router, prefix="/ws")
 
-@app.get("/health", include_in_schema=False)
-def health() -> dict:
-    return {"status": "healthy", "env": settings.env}
+@app.get("/health")
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy", "service": "NE-EMIS", "version": "1.0.0"}
+
+# Static / SPA Mounting
+web_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist")
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+
+if os.path.exists(os.path.join(web_dist, "index.html")):
+    assets_dir = os.path.join(web_dist, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    if os.path.exists(frontend_dir):
+        app.mount("/admin", StaticFiles(directory=frontend_dir, html=True), name="admin")
+        
+        @app.get("/admin")
+        async def admin_root():
+            return FileResponse(os.path.join(frontend_dir, "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def serve_react_spa(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("ws"):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return FileResponse(os.path.join(web_dist, "index.html"))
+elif os.path.exists(frontend_dir):
+    app.mount("/admin", StaticFiles(directory=frontend_dir, html=True), name="admin")
+
+    @app.get("/")
+    async def root():
+        return FileResponse(os.path.join(frontend_dir, "index.html"))

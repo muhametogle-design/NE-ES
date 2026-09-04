@@ -1,145 +1,180 @@
-import { motion } from 'framer-motion'
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { ErrorBanner } from '../components/ui.jsx'
-import { useAuth } from '../context/AuthContext.jsx'
+import React, { useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { loginUser, clearError } from '../features/auth/authSlice';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { ShieldCheck, School, Lock, KeyRound, Mail, UserCheck } from 'lucide-react';
 
-export default function Login() {
-  const { login, isAuthenticated } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
+export function Login() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { loading, error } = useSelector((state) => state.auth);
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
-  const sessionExpired = new URLSearchParams(location.search).get('expired')
-
-  if (isAuthenticated) {
-    navigate('/dashboard', { replace: true })
-  }
+  const [authMode, setAuthMode] = useState('email'); // 'email' | 'pin'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [staffId, setStaffId] = useState('');
+  const [pin, setPin] = useState('');
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      await login(email.trim(), password)
-      const dest = location.state?.from || '/dashboard'
-      navigate(dest, { replace: true })
-    } catch (err) {
-      setError(err.message || 'Login failed. Please try again.')
-    } finally {
-      setLoading(false)
+    e.preventDefault();
+    dispatch(clearError());
+    let payload = {};
+    if (authMode === 'email') {
+      payload = { email, password };
+    } else {
+      payload = { staff_identifier: staffId, pin };
     }
-  }
+
+    const res = await dispatch(loginUser(payload));
+    if (res.meta.requestStatus === 'fulfilled') {
+      const role = res.payload.user.role;
+      if (['state_admin', 'inspector'].includes(role)) {
+        navigate('/state');
+      } else {
+        navigate('/dashboard');
+      }
+    }
+  };
+
+  const fillDemo = (type) => {
+    dispatch(clearError());
+    if (type === 'state') {
+      setAuthMode('email');
+      setEmail('stateadmin@education.gov');
+      setPassword('StateAdmin@2026');
+    } else if (type === 'manager') {
+      setAuthMode('email');
+      setEmail('manager@nugaal.edu.so');
+      setPassword('School@2026');
+    } else if (type === 'teacher') {
+      setAuthMode('email');
+      setEmail('ayaan.hassan@nugaal.edu.so');
+      setPassword('Teach@2026');
+    }
+  };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
-      {/* Floating decorative orbs */}
-      <motion.div
-        aria-hidden
-        animate={{ y: [0, -18, 0] }}
-        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-        className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-brand-300/30 blur-3xl"
-      />
-      <motion.div
-        aria-hidden
-        animate={{ y: [0, 22, 0] }}
-        transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
-        className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-violet-300/30 blur-3xl"
-      />
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
+      {/* Background visual accents */}
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="glass-panel w-full max-w-md p-8 sm:p-10"
-      >
-        <div className="mb-8 flex flex-col items-center text-center">
-          <motion.div
-            whileHover={{ rotate: -6, scale: 1.06 }}
-            className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-brand-400 text-white shadow-xl shadow-brand-500/30"
-          >
-            <GraduationCap className="h-9 w-9" />
-          </motion.div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-            NE-EMIS
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Education Management Information System
-          </p>
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 z-10">
+        <div className="bg-slate-950 p-6 text-center text-white border-b border-slate-800">
+          <div className="h-12 w-12 bg-emerald-500 rounded-xl mx-auto flex items-center justify-center font-black text-2xl shadow-lg mb-3">
+            NE
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">NE-EMIS Authentication</h2>
+          <p className="text-xs text-slate-400 mt-1">North-East Education Management & Compliance Network</p>
         </div>
 
-        {sessionExpired && (
-          <ErrorBanner message="Your session expired. Please sign in again." />
-        )}
-        <ErrorBanner message={error} onDismiss={() => setError(null)} />
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="glass-label" htmlFor="email">
-              Email address
-            </label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@neemis.edu"
-                className="glass-input pl-10"
-              />
-            </div>
+        <div className="p-6">
+          <div className="flex bg-slate-100 p-1 rounded-xl mb-6 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => { setAuthMode('email'); dispatch(clearError()); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+                authMode === 'email' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Mail className="h-3.5 w-3.5" /> Email & Password
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('pin'); dispatch(clearError()); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+                authMode === 'pin' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <KeyRound className="h-3.5 w-3.5" /> Staff ID & PIN
+            </button>
           </div>
 
-          <div>
-            <label className="glass-label" htmlFor="password">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="glass-input pl-10"
-              />
+          {error && (
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium rounded-lg">
+              {error}
             </div>
-          </div>
+          )}
 
-          <motion.button
-            type="submit"
-            disabled={loading}
-            whileHover={!loading ? { scale: 1.02, y: -2 } : undefined}
-            whileTap={!loading ? { scale: 0.98 } : undefined}
-            className="btn-primary w-full py-3 text-base"
-          >
-            {loading ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {authMode === 'email' ? (
               <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Signing in…
+                <Input
+                  label="Official Email Address"
+                  type="email"
+                  placeholder="user@school.edu.so"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                <Input
+                  label="Password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
               </>
             ) : (
-              'Sign in'
+              <>
+                <Input
+                  label="National Staff Identifier"
+                  placeholder="NE-TID-2026-XX123"
+                  value={staffId}
+                  onChange={(e) => setStaffId(e.target.value)}
+                  required
+                />
+                <Input
+                  label="Security PIN"
+                  type="password"
+                  maxLength={8}
+                  placeholder="••••"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  required
+                />
+              </>
             )}
-          </motion.button>
-        </form>
 
-        <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Secured with JWT · Role-based access
+            <Button type="submit" loading={loading} className="w-full mt-2" size="lg">
+              Secure Sign In
+            </Button>
+          </form>
+
+          {/* Quick Demo Fill Buttons */}
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-3">
+              Fast Demo Logins
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => fillDemo('state')}
+                className="px-2 py-1.5 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-center"
+              >
+                State Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemo('manager')}
+                className="px-2 py-1.5 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-center"
+              >
+                School Manager
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemo('teacher')}
+                className="px-2 py-1.5 text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-center"
+              >
+                Teacher
+              </button>
+            </div>
+          </div>
         </div>
-      </motion.div>
+      </div>
     </div>
-  )
+  );
 }

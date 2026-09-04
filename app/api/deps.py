@@ -1,73 +1,145 @@
-"""Shared API dependencies: current-user resolution and role guards."""
-from __future__ import annotations
-
-from typing import Annotated
-
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+import logging
+from typing import Optional
+from fastapi import Depends, HTTPException, status, WebSocket, Query, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.database import get_db
-from app.core.security import decode_access_token
-from app.models.user import User, UserRole
-from app.schemas.auth import TokenPayload
+from app.core.db import get_db, set_rls_context, SessionLocal
+from app.core.security import decode_token
+from app.models.tenancy import User
+from app.models.compliance import SecurityAuditLog
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.api_v1_prefix}/auth/login",
-    scheme_name="Bearer",
-    description="JWT Bearer token obtained from /api/auth/login.",
-)
+security = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
-DbSession = Annotated[Session, Depends(get_db)]
-
-
-def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: DbSession,
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
 ) -> User:
-    """Resolve the authenticated user from the Bearer token."""
-    credentials_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    token = None
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    elif "authorization" in request.headers:
+        auth_hdr = request.headers.get("authorization", "")
+        if auth_hdr.lower().startswith("bearer "):
+            token = auth_hdr[7:].strip()
+        else:
+            token = auth_hdr.strip()
+    
+    if not token:
+        # Fallback to cookie or query parameter
+        token = request.cookies.get("access_token") or request.query_params.get("token")
 
-    payload = decode_access_token(token)
-    if payload is None:
-        raise credentials_exc
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    token_data = TokenPayload(**payload)
-    if token_data.sub is None:
-        raise credentials_exc
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    try:
-        user_id = int(token_data.sub)
-    except (TypeError, ValueError):
-        raise credentials_exc
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token subject missing")
 
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
-        raise credentials_exc
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or account disabled")
+
+    set_rls_context(db, user.school_id, user.role)
+    return user
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+) -> User:
+    if not token:
+        # Check cookie
+        token = websocket.cookies.get("access_token")
+
+    if not token:
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=401, detail="Missing WebSocket authentication token")
+
+    payload = decode_token(token)
+    if not payload:
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=401, detail="Invalid token for WebSocket")
+
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=401, detail="User inactive or missing")
 
     return user
 
-
-CurrentUser = Annotated[User, Depends(get_current_user)]
-
-
-def require_roles(*roles: UserRole):
-    """Dependency factory enforcing that the user holds one of ``roles``."""
-
-    def role_guard(current_user: CurrentUser) -> User:
-        if current_user.role not in roles:
+def require_role(*roles: str):
+    async def role_checker(user: User = Depends(get_current_user)):
+        if user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    f"Insufficient permissions. Requires one of: "
-                    f"{', '.join(r.value for r in roles)}"
-                ),
+                detail=f"Access denied: role '{user.role}' does not have required permissions ({', '.join(roles)})"
             )
-        return current_user
+        return user
+    return role_checker
 
-    return role_guard
+def require_school_tenant(user: User = Depends(get_current_user)) -> User:
+    if user.role not in ["school_manager", "teacher"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School tenant authorization required"
+        )
+    if not user.school_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not assigned to any school tenant"
+        )
+    return user
+
+def state_access_guard(user: User = Depends(get_current_user)) -> User:
+    if user.role not in ["state_admin", "inspector"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="State ministry access privileges required"
+        )
+    return user
+
+def financial_firewall(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> User:
+    if user.role in ["state_admin", "inspector"]:
+        # Log blocked attempt in SecurityAuditLog
+        audit = SecurityAuditLog(
+            user_id=user.id,
+            action="BLOCKED_FINANCE_ACCESS",
+            resource=f"finance:{request.url.path}",
+            status="BLOCKED",
+            details=f"State role '{user.role}' attempted unauthorized access to private school financial records.",
+            ip_address=request.client.host if request.client else None
+        )
+        db.add(audit)
+        db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Financial records restricted to school tenants. State oversight firewalled."
+        )
+
+    if user.role not in ["school_manager", "teacher"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant financial access required"
+        )
+    return user
