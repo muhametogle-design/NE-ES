@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, UniqueConstraint, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -22,7 +23,7 @@ class StudentInvoice(Base):
 
     id = Column(Integer, primary_key=True)
     school_id = Column(Integer, ForeignKey("private_schools.id", ondelete="CASCADE"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(sa.Uuid, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     invoice_number = Column(String, unique=True, nullable=False, index=True)
     term = Column(String, nullable=False)
     amount = Column(Float, nullable=False)

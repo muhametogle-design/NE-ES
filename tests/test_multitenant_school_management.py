@@ -73,7 +73,7 @@ def test_tenant_invoice_creation_and_payment_flow(client, school_manager_headers
     student = db_session.query(Student).filter(Student.school_id == 1).first()
 
     inv_res = client.post("/api/v1/school/finance/invoices", headers=school_manager_headers, json={
-        "student_id": student.id,
+        "student_id": str(student.id),
         "term": "Term 1",
         "amount": 150.0,
         "due_date": "2026-10-30"

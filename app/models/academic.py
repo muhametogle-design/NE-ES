@@ -86,21 +86,39 @@ class TimetableSlot(Base):
     substitutions = relationship("SubstitutionAssignment", back_populates="slot", cascade="all, delete-orphan")
 
 class Student(Base):
+    """Student enrollment record (V1: UUID primary key, EMIS identifier)."""
+
     __tablename__ = "students"
 
-    id = Column(Integer, primary_key=True)
-    school_id = Column(Integer, ForeignKey("private_schools.id", ondelete="CASCADE"), nullable=False)
-    national_student_id = Column(String, unique=True, nullable=False, index=True)
-    roll_number = Column(String, unique=True, nullable=False, index=True)
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
-    gender = Column(String, nullable=False)
+    id = Column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    emis_id = Column(String(30), unique=True, nullable=False, index=True)
+    first_name = Column(String(50), nullable=False)
+    last_name = Column(String(50), nullable=False)
+    gender = Column(String(10), nullable=False)
     date_of_birth = Column(Date, nullable=True)
-    class_id = Column(Integer, ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(
+        Integer,
+        ForeignKey("private_schools.id", ondelete="CASCADE", name="fk_students_school_id"),
+        index=True,
+        nullable=False,
+    )
+    classroom_id = Column(
+        sa.Uuid,
+        ForeignKey("classrooms.id", ondelete="SET NULL", name="fk_students_classroom_id"),
+        index=True,
+        nullable=True,
+    )
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # --- Legacy fields retained for the existing school/state portals ---
+    national_student_id = Column(String, unique=True, nullable=True, index=True)
+    roll_number = Column(String, unique=True, nullable=True, index=True)
+    class_id = Column(Integer, ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True)
 
     school = relationship("PrivateSchool", back_populates="students")
+    classroom = relationship("Classroom", back_populates="students")
     class_ref = relationship("SchoolClass", back_populates="students")
     grades = relationship("StudentGrade", back_populates="student", cascade="all, delete-orphan")
     attendance = relationship("SubjectAttendance", back_populates="student", cascade="all, delete-orphan")
@@ -113,7 +131,7 @@ class StudentGrade(Base):
 
     id = Column(Integer, primary_key=True)
     school_id = Column(Integer, ForeignKey("private_schools.id", ondelete="CASCADE"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(sa.Uuid, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     subject_id = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     term = Column(String, nullable=False)
     score = Column(Float, nullable=False)
@@ -134,7 +152,7 @@ class SubjectAttendance(Base):
 
     id = Column(Integer, primary_key=True)
     school_id = Column(Integer, ForeignKey("private_schools.id", ondelete="CASCADE"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(sa.Uuid, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     subject_id = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     class_id = Column(Integer, ForeignKey("school_classes.id", ondelete="CASCADE"), nullable=False)
     date = Column(Date, nullable=False)
@@ -156,7 +174,7 @@ class LiveAttendance(Base):
 
     id = Column(Integer, primary_key=True)
     school_id = Column(Integer, ForeignKey("private_schools.id", ondelete="CASCADE"), nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(sa.Uuid, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     timetable_slot_id = Column(Integer, ForeignKey("timetable_slots.id", ondelete="CASCADE"), nullable=False)
     date = Column(Date, nullable=False)
     status = Column(String, nullable=False)  # present, absent, late, excused
@@ -194,3 +212,4 @@ class Classroom(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     school = relationship("PrivateSchool", back_populates="classrooms")
+    students = relationship("Student", back_populates="classroom")

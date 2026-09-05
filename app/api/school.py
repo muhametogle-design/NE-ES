@@ -1,3 +1,4 @@
+import uuid
 import math
 import os
 from typing import List, Optional, Dict, Any
@@ -53,6 +54,19 @@ router = APIRouter(prefix="/v1/school", tags=["school"])
 # ==========================================
 # 1. STUDENTS
 # ==========================================
+def _resolve_student(query, ne_sid: str):
+    """Resolve a student by UUID pk, roll number, national id or EMIS id."""
+    filters = [
+        Student.roll_number == ne_sid,
+        Student.national_student_id == ne_sid,
+        Student.emis_id == ne_sid,
+    ]
+    try:
+        filters.append(Student.id == uuid.UUID(str(ne_sid)))
+    except (ValueError, AttributeError, TypeError):
+        pass
+    return query.filter(or_(*filters)).first()
+
 @router.get("/students", response_model=PaginatedResponse[StudentResponse])
 async def list_students(
     q: Optional[str] = None,
@@ -71,7 +85,8 @@ async def list_students(
             Student.first_name.ilike(search),
             Student.last_name.ilike(search),
             Student.roll_number.ilike(search),
-            Student.national_student_id.ilike(search)
+            Student.national_student_id.ilike(search),
+            Student.emis_id.ilike(search)
         ))
 
     total = query.count()
@@ -94,6 +109,7 @@ async def create_student(
 
     db_student = Student(
         school_id=user.school_id,
+        emis_id=roll_number,
         national_student_id=roll_number,
         roll_number=roll_number,
         first_name=student.first_name,
@@ -111,10 +127,7 @@ async def create_student(
 @router.get("/students/{ne_sid}", response_model=StudentResponse)
 async def get_student(ne_sid: str, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
     query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
+    student = _resolve_student(query, ne_sid)
 
     if not student:
         raise HTTPException(404, f"Student not found with identifier '{ne_sid}' in this school")
@@ -129,10 +142,7 @@ async def update_student(
     db: Session = Depends(get_db)
 ):
     query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
+    student = _resolve_student(query, ne_sid)
 
     if not student:
         raise HTTPException(404, f"Student not found with identifier '{ne_sid}' in this school")
@@ -154,10 +164,7 @@ async def update_student(
 @router.delete("/students/{ne_sid}", response_model=MessageResponse)
 async def delete_student(ne_sid: str, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
     query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
+    student = _resolve_student(query, ne_sid)
 
     if not student:
         raise HTTPException(404, "Student not found in this school")

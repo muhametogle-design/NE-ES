@@ -45,7 +45,7 @@ class BackupService:
             ],
             "students": [
                 {
-                    "id": st.id,
+                    "id": str(st.id),
                     "school_id": st.school_id,
                     "roll_number": st.roll_number,
                     "first_name": st.first_name,
@@ -67,7 +67,7 @@ class BackupService:
             ]
         }
         
-        data_bytes = json.dumps(payload).encode("utf-8")
+        data_bytes = json.dumps(payload, default=str).encode("utf-8")
         
         # Encrypt with AES-256-GCM
         key = BackupService._get_encryption_key()

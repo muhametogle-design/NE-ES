@@ -294,6 +294,7 @@ class TenantService:
                 
                 student = Student(
                     school_id=school_id,
+                    emis_id=roll_number,
                     national_student_id=roll_number,
                     roll_number=roll_number,
                     first_name=first_name,

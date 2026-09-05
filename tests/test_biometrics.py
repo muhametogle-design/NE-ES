@@ -6,7 +6,7 @@ def test_biometric_registration_and_verification_flow(client, school_manager_hea
 
     # 1. Options generator
     opt_res = client.post("/api/v1/school/biometrics/register/options", headers=school_manager_headers, json={
-        "student_id": student.id
+        "student_id": str(student.id)
     })
     assert opt_res.status_code == 200
     assert "challenge" in opt_res.json()
@@ -15,7 +15,7 @@ def test_biometric_registration_and_verification_flow(client, school_manager_hea
     # 2. Register Credential
     cred_id = f"FIDO2-TEST-{student.roll_number}-123"
     reg_res = client.post("/api/v1/school/biometrics/register/verify", headers=school_manager_headers, json={
-        "student_id": student.id,
+        "student_id": str(student.id),
         "credential_id": cred_id,
         "public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."
     })
@@ -31,7 +31,7 @@ def test_biometric_registration_and_verification_flow(client, school_manager_hea
     data = ver_res.json()
     assert data["success"] is True
     assert data["status"] == "success"
-    assert data["student_id"] == student.id
+    assert data["student_id"] == str(student.id)
     assert data["roll_number"] == student.roll_number
 
     # 4. Verify Unknown Credential (Rejected)
@@ -53,7 +53,7 @@ def test_biometric_registration_and_verification_flow(client, school_manager_hea
 
 def test_biometric_options_nonexistent_student_returns_404(client, school_manager_headers):
     response = client.post("/api/v1/school/biometrics/register/options", headers=school_manager_headers, json={
-        "student_id": 99999
+        "student_id": "00000000-0000-0000-0000-000000000000"
     })
     assert response.status_code == 404
 

@@ -1,3 +1,4 @@
+import uuid
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
@@ -22,10 +23,12 @@ class StudentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 class StudentResponse(StudentBase):
-    id: int
+    id: uuid.UUID
     school_id: int
-    national_student_id: str
-    roll_number: str
+    emis_id: str
+    national_student_id: Optional[str] = None
+    roll_number: Optional[str] = None
+    classroom_id: Optional[uuid.UUID] = None
     is_active: bool
     created_at: datetime
 
@@ -146,7 +149,7 @@ class TimetableSlotResponse(BaseModel):
 
 # ----------------- Attendance -----------------
 class AttendanceRecordItem(BaseModel):
-    student_id: int
+    student_id: uuid.UUID
     status: str  # present, absent, late, excused
 
 class AttendanceMarkRequest(BaseModel):
@@ -157,7 +160,7 @@ class AttendanceMarkRequest(BaseModel):
 
 class SubjectAttendanceResponse(BaseModel):
     id: int
-    student_id: int
+    student_id: uuid.UUID
     student_name: Optional[str] = None
     roll_number: Optional[str] = None
     subject_id: int
@@ -175,7 +178,7 @@ class LiveAttendanceMarkRequest(BaseModel):
 
 class LiveAttendanceResponse(BaseModel):
     id: int
-    student_id: int
+    student_id: uuid.UUID
     timetable_slot_id: int
     date: date
     status: str
@@ -192,7 +195,7 @@ class AttendanceSubmitResponse(BaseModel):
 
 # ----------------- Grades & Exams -----------------
 class GradeEntryItem(BaseModel):
-    student_id: int
+    student_id: uuid.UUID
     score: float
     grade: Optional[str] = None
 
@@ -204,7 +207,7 @@ class GradeBatchRequest(BaseModel):
 
 class GradeResponse(BaseModel):
     id: int
-    student_id: int
+    student_id: uuid.UUID
     student_name: Optional[str] = None
     roll_number: Optional[str] = None
     subject_id: int
@@ -345,10 +348,10 @@ class SyllabusPlanResponse(BaseModel):
 
 # ----------------- Biometrics -----------------
 class BiometricRegisterOptionsRequest(BaseModel):
-    student_id: int
+    student_id: uuid.UUID
 
 class BiometricRegisterVerifyRequest(BaseModel):
-    student_id: int
+    student_id: uuid.UUID
     credential_id: str
     public_key: str
     transports: Optional[str] = "internal"
@@ -356,11 +359,11 @@ class BiometricRegisterVerifyRequest(BaseModel):
 class BiometricVerifyRequest(BaseModel):
     credential_id: str
     verification_type: str = "exam_hall_entry"
-    student_id: Optional[int] = None
+    student_id: Optional[uuid.UUID] = None
 
 class BiometricLogResponse(BaseModel):
     id: int
-    student_id: Optional[int] = None
+    student_id: Optional[uuid.UUID] = None
     student_name: Optional[str] = None
     credential_id: Optional[str] = None
     verification_type: str
@@ -414,7 +417,7 @@ class TuitionRateResponse(BaseModel):
         from_attributes = True
 
 class InvoiceCreate(BaseModel):
-    student_id: int
+    student_id: uuid.UUID
     term: str
     amount: float
     due_date: Optional[date] = None
@@ -422,7 +425,7 @@ class InvoiceCreate(BaseModel):
 class InvoiceResponse(BaseModel):
     id: int
     school_id: int
-    student_id: int
+    student_id: uuid.UUID
     student_name: Optional[str] = None
     roll_number: Optional[str] = None
     invoice_number: str

@@ -12,7 +12,7 @@ def test_teacher_can_mark_attendance_for_assigned_class(client, teacher_headers,
         "subject_id": assignment.subject_id,
         "date": "2026-09-04",
         "records": [
-            {"student_id": student.id, "status": "present"}
+            {"student_id": str(student.id), "status": "present"}
         ]
     })
     assert response.status_code == 200
@@ -32,6 +32,7 @@ def test_teacher_forbidden_from_marking_unassigned_class(client, teacher_headers
 
     student = Student(
         school_id=1,
+        emis_id="IL-99999",
         national_student_id="IL-99999",
         roll_number="IL-99999",
         first_name="Test",
@@ -49,7 +50,7 @@ def test_teacher_forbidden_from_marking_unassigned_class(client, teacher_headers
         "subject_id": subject.id,
         "date": "2026-09-04",
         "records": [
-            {"student_id": student.id, "status": "present"}
+            {"student_id": str(student.id), "status": "present"}
         ]
     })
     assert response.status_code == 403
@@ -65,7 +66,7 @@ def test_school_manager_can_mark_attendance_for_any_class(client, school_manager
         "subject_id": subject.id,
         "date": "2026-09-04",
         "records": [
-            {"student_id": student.id, "status": "present"}
+            {"student_id": str(student.id), "status": "present"}
         ]
     })
     assert response.status_code == 200

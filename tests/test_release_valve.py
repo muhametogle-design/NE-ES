@@ -14,7 +14,7 @@ def test_grade_entry_and_publishing_creates_exam_event(client, school_manager_he
         "class_id": assignment.class_id,
         "term": "Term 1",
         "grades": [
-            {"student_id": student.id, "score": 88.5}
+            {"student_id": str(student.id), "score": 88.5}
         ]
     })
     assert grade_res.status_code == 200

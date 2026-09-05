@@ -38,7 +38,7 @@ def test_state_admin_cannot_create_tuition_rate(client, state_admin_headers):
 
 def test_state_admin_cannot_create_invoice(client, state_admin_headers):
     response = client.post("/api/v1/school/finance/invoices", headers=state_admin_headers, json={
-        "student_id": 1,
+        "student_id": "00000000-0000-0000-0000-000000000000",
         "term": "Term 1",
         "amount": 100.0
     })

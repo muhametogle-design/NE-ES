@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.student import Student, StudentStatus
-from app.schemas.student import (
+from app.schemas.student_legacy import (
     StudentCreate,
     StudentList,
     StudentRead,

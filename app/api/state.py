@@ -225,7 +225,8 @@ async def search_state_students(
             Student.first_name.ilike(search),
             Student.last_name.ilike(search),
             Student.roll_number.ilike(search),
-            Student.national_student_id.ilike(search)
+            Student.national_student_id.ilike(search),
+            Student.emis_id.ilike(search)
         )
     ).limit(50).all()
 
@@ -251,7 +252,8 @@ async def lookup_state_student(
     student = db.query(Student).filter(
         or_(
             Student.roll_number == ne_sid,
-            Student.national_student_id == ne_sid
+            Student.national_student_id == ne_sid,
+            Student.emis_id == ne_sid
         )
     ).first()
 
