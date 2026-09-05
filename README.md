@@ -40,8 +40,8 @@ cp .env.example .env
 # Apply schema migrations (alembic/env.py loads DATABASE_URL from .env)
 alembic upgrade head
 
-# Seed Demo Database
-python -m scripts.seed_data --reset
+# Seed default records (state admins, 5 school tenants, managers/teachers, demo data)
+python -m scripts.seed          # idempotent; add --reset to wipe a local SQLite file first
 
 # Start Backend Server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -60,6 +60,9 @@ npm run dev
 ```bash
 pytest
 ```
+The suite runs against an isolated in-memory SQLite database. `tests/conftest.py` sets
+`APP_ENV=test`, which makes the API lifespan skip schema initialisation and demo seeding,
+so `pytest` never touches the database configured in `.env` (e.g. `ne_es_dev`).
 
 ---
 

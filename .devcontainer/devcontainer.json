@@ -29,5 +29,5 @@
     8000,
     5432
   ],
-  "postCreateCommand": "pip install -r requirements-dev.txt && (cd web && npm install && npm run build) && alembic upgrade head && python -m scripts.seed_data"
+  "postCreateCommand": "pip install -r requirements-dev.txt && (cd web && npm install && npm run build) && alembic upgrade head && python -m scripts.seed"
 }
