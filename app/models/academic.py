@@ -1,7 +1,33 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Float, Date
+import uuid
+
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Float, Date, Uuid
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.models.base import Base
+
+class District(Base):
+    """Regional Education Office (REO) district.
+
+    Groups private schools by administrative district for state oversight.
+    ``Uuid`` is dialect-portable: native ``UUID`` on PostgreSQL, ``CHAR(32)``
+    on SQLite (used by the test suite and the zero-config default).
+    """
+    __tablename__ = "districts"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    code = Column(String(16), unique=True, index=True, nullable=False)  # e.g. SOOL, TOG-01
+    name = Column(String(255), nullable=False)
+    region = Column(String(128), nullable=False, index=True)
+    reo_contact_email = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Schools are never deleted with their district: the FK is ON DELETE SET NULL.
+    schools = relationship("PrivateSchool", back_populates="district", order_by="PrivateSchool.school_code")
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<District {self.code} ({self.region})>"
 
 class SchoolClass(Base):
     __tablename__ = "school_classes"

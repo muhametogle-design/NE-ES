@@ -36,7 +36,7 @@ if ($npmAvailable -and -not $NoBuild) {
 # Reset database if requested
 if ($Reset) {
     Write-Host "Resetting database..."
-    python -m scripts.seed_data --reset
+    python -m scripts.seed --reset
 }
 
 # Start server
