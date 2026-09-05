@@ -27,6 +27,7 @@ class PrivateSchool(Base):
     # Relationships
     users = relationship("User", back_populates="school", cascade="all, delete-orphan")
     classes = relationship("SchoolClass", back_populates="school", cascade="all, delete-orphan")
+    classrooms = relationship("Classroom", back_populates="school", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="school", cascade="all, delete-orphan")
     roll_sequence = relationship("SchoolRollSequence", back_populates="school", uselist=False, cascade="all, delete-orphan")
     academic_years = relationship("AcademicYear", back_populates="school", cascade="all, delete-orphan")

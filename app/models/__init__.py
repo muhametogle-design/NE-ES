@@ -2,7 +2,7 @@ from app.models.base import Base
 from app.models.tenancy import PrivateSchool, SchoolRollSequence, User, AcademicYear
 from app.models.academic import (
     SchoolClass, Subject, TeachingAssignment, TimetableSlot,
-    Student, StudentGrade, SubjectAttendance, LiveAttendance
+    Student, StudentGrade, SubjectAttendance, LiveAttendance, Classroom
 )
 from app.models.finance import TuitionRate, StudentInvoice, PaymentTransaction
 from app.models.compliance import (
@@ -20,6 +20,7 @@ all_models = [
     User,
     AcademicYear,
     SchoolClass,
+    Classroom,
     Subject,
     TeachingAssignment,
     TimetableSlot,
@@ -53,6 +54,7 @@ __all__ = [
     "User",
     "AcademicYear",
     "SchoolClass",
+    "Classroom",
     "Subject",
     "TeachingAssignment",
     "TimetableSlot",

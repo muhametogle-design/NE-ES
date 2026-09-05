@@ -1,3 +1,6 @@
+import uuid
+
+import sqlalchemy as sa
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Float, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -167,3 +170,27 @@ class LiveAttendance(Base):
     student = relationship("Student", back_populates="live_attendance")
     slot = relationship("TimetableSlot", back_populates="live_attendance")
     marker = relationship("User")
+
+class Classroom(Base):
+    """Physical/administrative classroom grouping (e.g. "Grade 10-A")."""
+
+    __tablename__ = "classrooms"
+
+    id = Column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    # NOTE: private_schools.id is an Integer PK in this codebase, so the FK
+    # column must be Integer to remain a valid foreign key reference.
+    school_id = Column(
+        Integer,
+        ForeignKey("private_schools.id", ondelete="CASCADE", name="fk_classrooms_school_id"),
+        index=True,
+        nullable=False,
+    )
+    name = Column(String(100), nullable=False)
+    grade_level = Column(String(50), nullable=False, index=True)
+    academic_year = Column(String(20), nullable=False, index=True)
+    capacity = Column(Integer, default=40, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    school = relationship("PrivateSchool", back_populates="classrooms")
