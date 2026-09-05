@@ -12,6 +12,11 @@ node_modules/
 web/dist/
 frontend/dist/
 
+# Virtual environments
+.venv/
+venv/
+env/
+
 # Environment & Data
 .env
 *.sqlite

@@ -1,4 +1,10 @@
 import os
+
+# Tests must never depend on the developer's .env: pin an isolated SQLite
+# database *before* app.core.config builds its settings singleton.
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

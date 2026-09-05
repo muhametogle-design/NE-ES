@@ -11,6 +11,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      # `alembic upgrade head` (api service) waits for this to pass.
+      test: ["CMD-SHELL", "pg_isready -U schoolsystem -d schoolsystem"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   api:
     build: .
@@ -20,10 +27,23 @@ services:
       APP_ENV: production
       AUTO_SEED_DEMO: "true"
       PLATFORM_TIMEZONE: Africa/Nairobi
+      # PostgreSQL pool tuning (see app/core/config.py)
+      DB_POOL_SIZE: "10"
+      DB_MAX_OVERFLOW: "20"
+      DB_POOL_PRE_PING: "true"
+      DB_POOL_RECYCLE: "1800"
+      DB_APPLICATION_NAME: ne-es-api
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
+    # Alembic owns the PostgreSQL schema in production (DB_AUTO_CREATE_SCHEMA
+    # defaults to false when APP_ENV=production), so migrate before serving.
+    command:
+      - sh
+      - -c
+      - "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 volumes:
   postgres_data:

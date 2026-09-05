@@ -53,6 +53,57 @@ pytest
 
 ---
 
+## Database (PostgreSQL 16)
+
+The application talks to PostgreSQL 16 through **psycopg2**. Copy the template
+and point it at your server:
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/ne_es_dev
+```
+
+`postgres://…` and `postgresql://…` (Heroku/Render/Fly/Supabase style) are
+accepted and rewritten to `postgresql+psycopg2://…` automatically. If you prefer
+discrete parts, leave `DATABASE_URL` unset and fill in `POSTGRES_HOST`,
+`POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and
+`POSTGRES_SSLMODE` — the URL is composed for you. When nothing is configured at
+all, development/test environments fall back to
+`sqlite:///./data/schoolsystem.db`; `APP_ENV=production` refuses SQLite.
+
+**Passwords must be percent-encoded** (`%40` for `@`, `%25` for `%`).
+
+### Connection layout
+
+| Concern | Where |
+|---|---|
+| URL resolution, validation, environment rules | `app/core/config.py` |
+| Engine, pooling, `SessionLocal`, `get_db()` | `app/db/session.py` |
+| Compatibility shims for older imports | `app/core/db.py`, `app/core/database.py` |
+| Migration target URL + metadata registry | `alembic/env.py` |
+
+Runtime pooling (PostgreSQL only): `pool_size=10`, `max_overflow=20`,
+`pool_pre_ping=True`, `pool_recycle=1800`, `pool_timeout=30` — all overridable
+via `DB_*` environment variables. Migrations use `NullPool` (short-lived).
+
+### Migrations
+
+```bash
+alembic upgrade head          # apply
+alembic revision --autogenerate -m "add foo"   # generate from ORM models
+alembic downgrade -1
+alembic upgrade head --sql    # offline SQL (no connection needed)
+```
+
+`alembic/env.py` reads the URL from `app.core.config.settings` at runtime and
+registers **every** model on the single declarative base
+(`app.models.base.Base`), so autogenerate sees the whole schema.
+
+---
+
 ## Default Credentials
 
 | Role | Email | Password | Staff Identifier | Default PIN |
