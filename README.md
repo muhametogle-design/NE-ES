@@ -30,7 +30,17 @@ source .venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements-dev.txt
 
-# Initialize & Seed Demo Database
+# Configure the database (optional — defaults to SQLite at ./data/schoolsystem.db)
+cp .env.example .env
+# For a local PostgreSQL instance, set in .env:
+#   DATABASE_URL=postgresql+psycopg2://postgres:12345@localhost:5432/ne_es_dev
+# and create the database once:
+#   psql -U postgres -h localhost -c "CREATE DATABASE ne_es_dev;"
+
+# Apply schema migrations (alembic/env.py loads DATABASE_URL from .env)
+alembic upgrade head
+
+# Seed Demo Database
 python -m scripts.seed_data --reset
 
 # Start Backend Server
