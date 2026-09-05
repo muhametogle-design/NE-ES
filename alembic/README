@@ -1,9 +1,11 @@
 Generic single-database configuration for NE-EMIS (Alembic).
 
-- `env.py` loads `Base.metadata` from `app.core.database` and imports
-  `app.models.user`, `app.models.student`, `app.models.finance`.
+- `env.py` loads `Base.metadata` from `app.models.base` and imports the
+  `app.models` package (tenancy, academic, finance, compliance, backups,
+  biometrics, absence, syllabus) so every table is registered.
 - The database URL is resolved from `NE_EMIS_DATABASE_URL`/`DATABASE_URL`
-  env vars or `app.core.config.settings` — never hard-code it here.
+  (shell environment, then the repo-root `.env` loaded via python-dotenv)
+  or `app.core.config.settings` — never hard-code it here.
 
 Common commands:
     alembic upgrade head        # apply all migrations
