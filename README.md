@@ -8,6 +8,12 @@ NE-EMIS consists of two primary operational domains:
 1. **School Tenant Operations**: Private school portal for enrollment, attendance, substitutions, syllabus pacing, student biometrics (WebAuthn/FIDO2), report cards, and private tuition billing.
 2. **State Ministry Oversight**: Oversight center for institution directories, roll sequence control, national student registry lookup, real-time attendance compliance mapping, and automated 15:00 EAT RED ALARM auditing.
 
+### Districts (Regional Education Offices)
+Schools can be grouped into state-managed **districts** (`/api/v1/districts`). State roles may list/read
+districts (`GET`, filterable by `region`, `is_active`, `q`, paginated); only `state_admin` may create or
+update them (`POST`, `PATCH`). District codes are unique and case-insensitive (normalised to upper-case);
+`private_schools.district_id` is an optional FK (`ON DELETE SET NULL`).
+
 ### Key Business Constraints Enforced
 - **Strict Financial Firewall**: State roles (`state_admin`, `inspector`) are blocked from accessing private tuition rates, invoices, or payment transactions. Every blocked attempt is recorded in the append-only `security_audit_log`.
 - **Immutable National Roll Numbers**: Student roll numbers format (`{school_code}-{next_value}`) are immutable upon creation.
