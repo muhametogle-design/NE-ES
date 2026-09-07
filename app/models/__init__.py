@@ -11,6 +11,7 @@ from app.models.compliance import (
 )
 from app.models.backups import BackupRecord, BackupAuditEvent
 from app.models.biometrics import BiometricCredential, BiometricVerificationLog
+from app.models.biometric import StudentBiometric
 from app.models.absence import TeacherAbsence, SubstitutionAssignment
 from app.models.syllabus import SyllabusPlan, SyllabusTopic, SyllabusProgressEntry
 
@@ -40,6 +41,7 @@ all_models = [
     BackupAuditEvent,
     BiometricCredential,
     BiometricVerificationLog,
+    StudentBiometric,
     TeacherAbsence,
     SubstitutionAssignment,
     SyllabusPlan,
@@ -74,6 +76,7 @@ __all__ = [
     "BackupAuditEvent",
     "BiometricCredential",
     "BiometricVerificationLog",
+    "StudentBiometric",
     "TeacherAbsence",
     "SubstitutionAssignment",
     "SyllabusPlan",

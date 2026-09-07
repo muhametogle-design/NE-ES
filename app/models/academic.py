@@ -129,6 +129,7 @@ class Student(Base):
     attendance = relationship("SubjectAttendance", back_populates="student", cascade="all, delete-orphan")
     live_attendance = relationship("LiveAttendance", back_populates="student", cascade="all, delete-orphan")
     biometric_credentials = relationship("BiometricCredential", back_populates="student", cascade="all, delete-orphan")
+    biometrics = relationship("StudentBiometric", back_populates="student", cascade="all, delete-orphan")
     invoices = relationship("StudentInvoice", back_populates="student", cascade="all, delete-orphan")
 
 class StudentGrade(Base):

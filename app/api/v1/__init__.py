@@ -8,8 +8,10 @@ with ``/v1/...``; ``app.main`` mounts the aggregate ``v1_router`` under
 from fastapi import APIRouter
 
 from app.api.v1.districts import router as districts_router
+from app.api.v1.biometrics import router as biometrics_router
 
 v1_router = APIRouter()
 v1_router.include_router(districts_router)
+v1_router.include_router(biometrics_router)
 
-__all__ = ["v1_router", "districts_router"]
+__all__ = ["v1_router", "districts_router", "biometrics_router"]
