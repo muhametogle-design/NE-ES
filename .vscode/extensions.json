@@ -1,0 +1,17 @@
+{
+  // Recommended extensions for NE-EMIS. VS Code prompts to install these on first open.
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "ms-python.black-formatter",
+    "charliermarsh.ruff",
+    "bradlc.vscode-tailwindcss",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "ms-azuretools.vscode-docker",
+    "qwtel.sqlite-viewer",
+    "rangav.vscode-thunder-client",
+    "alefragnani.bookmarks"
+  ]
+}

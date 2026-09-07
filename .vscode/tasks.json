@@ -1,0 +1,130 @@
+{
+  // NE-EMIS — VS Code tasks. Run with: Terminal > Run Task...
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}",
+    "env": {
+      "PYTHONUNBUFFERED": "1"
+    }
+  },
+  "presentation": {
+    "reveal": "always",
+    "panel": "dedicated",
+    "clear": true
+  },
+  "problemMatcher": [],
+  "tasks": [
+    {
+      "label": "ne-emis: create venv",
+      "type": "shell",
+      "windows": {
+        "command": "if (-not (Test-Path '.venv')) { python -m venv .venv }"
+      },
+      "command": "[ -d .venv ] || python3 -m venv .venv",
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: install backend deps",
+      "type": "shell",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install -r requirements-dev.txt" },
+      "command": ".venv/bin/python -m pip install -r requirements-dev.txt",
+      "dependsOn": ["ne-emis: create venv"],
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: install frontend deps",
+      "type": "shell",
+      "command": "npm install --no-audit --no-fund",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: build frontend",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "dependsOn": ["ne-emis: install frontend deps"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: ensure .env",
+      "type": "shell",
+      "windows": { "command": "if (-not (Test-Path '.env')) { Copy-Item '.env.example' '.env' }" },
+      "command": "[ -f .env ] || cp .env.example .env",
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: seed database (reset)",
+      "type": "shell",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m scripts.seed_data --reset" },
+      "command": ".venv/bin/python -m scripts.seed_data --reset",
+      "dependsOn": ["ne-emis: install backend deps", "ne-emis: ensure .env"],
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: alembic upgrade head",
+      "type": "shell",
+      "windows": { "command": ".\\.venv\\Scripts\\alembic.exe upgrade head" },
+      "command": ".venv/bin/alembic upgrade head",
+      "dependsOn": ["ne-emis: ensure .env"],
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: pytest",
+      "type": "shell",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pytest -q" },
+      "command": ".venv/bin/python -m pytest -q",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: run server (uvicorn)",
+      "type": "shell",
+      "windows": { "command": ".\\.venv\\Scripts\\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app" },
+      "command": ".venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app",
+      "isBackground": true,
+      "dependsOn": ["ne-emis: install backend deps", "ne-emis: build frontend", "ne-emis: ensure .env"],
+      "problemMatcher": {
+        "pattern": [{ "regexp": "^$", "file": 1, "location": 1, "message": 1 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Will watch for changes|Started reloader process",
+          "endsPattern": "Application startup complete|Uvicorn running on"
+        }
+      }
+    },
+    {
+      "label": "ne-emis: run frontend dev (vite)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": [{ "regexp": "^$", "file": 1, "location": 1, "message": 1 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in|Local:"
+        }
+      }
+    },
+    {
+      "label": "ne-emis: bootstrap",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "ne-emis: ensure .env",
+        "ne-emis: install backend deps",
+        "ne-emis: build frontend",
+        "ne-emis: seed database (reset)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "ne-emis: run everything (bootstrap + server)",
+      "dependsOrder": "sequence",
+      "dependsOn": ["ne-emis: bootstrap", "ne-emis: run server (uvicorn)"],
+      "problemMatcher": []
+    }
+  ]
+}

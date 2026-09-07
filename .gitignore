@@ -7,6 +7,11 @@ dist/
 build/
 .pytest_cache/
 
+# Local virtual environments (created by the .vscode tasks / README quick start)
+.venv/
+venv/
+env/
+
 # Node
 node_modules/
 web/dist/
@@ -21,7 +26,8 @@ backups/
 logs/
 
 # IDE
-.vscode/
+# .vscode/ is intentionally tracked: it holds the shared run/debug + task config
+# for NE-EMIS (.vscode/README.md documents how to launch the system from VS Code).
 .idea/
 *.swp
 .DS_Store

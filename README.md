@@ -20,6 +20,11 @@ NE-EMIS consists of two primary operational domains:
 
 ## Quick Start
 
+> **Using VS Code?** Everything below is pre-wired in `.vscode/` — open the repo,
+> run the task `ne-emis: bootstrap` (Terminal → Run Task…), then press **F5** with
+> *"NE-EMIS: Backend + Frontend (compound)"* selected. Details, single-service
+> launchers, credentials, and troubleshooting are in [`.vscode/README.md`](.vscode/README.md).
+
 ### 1. Backend Setup
 ```bash
 # Create and activate virtual environment

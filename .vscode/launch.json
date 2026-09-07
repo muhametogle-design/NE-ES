@@ -1,0 +1,97 @@
+{
+  // NE-EMIS — VS Code run & debug configurations.
+  // Press F5 with "NE-EMIS: Backend + Frontend (compound)" selected to run the whole system.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "NE-EMIS: Backend (uvicorn, debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "app"
+      ],
+      "cwd": "${workspaceFolder}",
+      "python": "${command:python.interpreterPath}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "preLaunchTask": "ne-emis: ensure .env"
+    },
+    {
+      "name": "NE-EMIS: Backend (no reload — attach a debugger-friendly run)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "python": "${command:python.interpreterPath}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "NE-EMIS: Frontend (Vite dev server)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/web",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "NE-EMIS: Pytest (tests/)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests", "-v"],
+      "cwd": "${workspaceFolder}",
+      "python": "${command:python.interpreterPath}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "NE-EMIS: Seed demo database (reset)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.seed_data",
+      "args": ["--reset"],
+      "cwd": "${workspaceFolder}",
+      "python": "${command:python.interpreterPath}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "NE-EMIS: Current Python file",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "python": "${command:python.interpreterPath}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "NE-EMIS: Backend + Frontend (compound)",
+      "configurations": [
+        "NE-EMIS: Backend (uvicorn, debug)",
+        "NE-EMIS: Frontend (Vite dev server)"
+      ],
+      "stopAll": true,
+      "preLaunchTask": "ne-emis: bootstrap"
+    }
+  ]
+}
