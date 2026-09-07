@@ -22,6 +22,10 @@ purpose so every developer gets the same launchers, tasks, and settings.
 
 ## 1. One-time bootstrap
 
+> **Shortcut:** `./scripts/run.sh` (or `.\scripts\run.ps1` on Windows) performs all
+> of the steps below *and* starts the server in one shot. Use the task runner or the
+> manual steps when you want the pieces separate (e.g. backend only, or Vite HMR).
+
 Open the repo root in VS Code, then either:
 
 **A. Task runner (recommended)** — `Terminal → Run Task… → ne-emis: bootstrap`

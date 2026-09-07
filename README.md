@@ -20,6 +20,16 @@ NE-EMIS consists of two primary operational domains:
 
 ## Quick Start
 
+> **Fastest path — one command:**
+> ```bash
+> ./scripts/run.sh              # Linux / macOS / WSL / Git Bash
+> .\scripts\run.ps1             # Windows PowerShell
+> ```
+> Creates `.venv`, installs deps, copies `.env.example` → `.env`, builds the React
+> frontend, seeds the demo database, and serves everything on
+> **http://localhost:8000**. Useful flags: `--reset` (wipe + reseed DB),
+> `--no-build` (skip npm), `--no-reload`, `PORT=9000` / `-Port 9000`.
+
 > **Using VS Code?** Everything below is pre-wired in `.vscode/` — open the repo,
 > run the task `ne-emis: bootstrap` (Terminal → Run Task…), then press **F5** with
 > *"NE-EMIS: Backend + Frontend (compound)"* selected. Details, single-service
