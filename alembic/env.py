@@ -50,6 +50,7 @@ from app.models import (  # noqa: E402,F401
     academic,
     backups,
     base,
+    biometric,
     biometrics,
     compliance,
     finance,

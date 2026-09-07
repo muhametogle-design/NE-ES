@@ -14,6 +14,27 @@ districts (`GET`, filterable by `region`, `is_active`, `q`, paginated); only `st
 update them (`POST`, `PATCH`). District codes are unique and case-insensitive (normalised to upper-case);
 `private_schools.district_id` is an optional FK (`ON DELETE SET NULL`).
 
+### Fingerprint templates
+The fingerprint API is separate from the existing `/api/v1/school/biometrics` WebAuthn flow:
+
+- `POST /api/v1/biometrics/enroll` accepts an integer `student_id`, Base64 `template_data`, and
+  optional `finger_position` (default `RIGHT_INDEX`), `template_format` (default `ISO_19794_2`),
+  `quality_score` (0–100), and `device_model`. It returns **201** with a UUID enrollment ID,
+  metadata, and timestamps, but **never returns the stored template**.
+- `POST /api/v1/biometrics/verify` accepts an integer `school_id`, `template_data`, and optional
+  `template_format` and `finger_position`. It returns **200** with `verified`, `message`, and
+  `student_id`, `student_name`, and `roll_number` (null unless a unique active student matches).
+- Both endpoints require an authenticated school manager or teacher. Enrollment is limited to
+  students in that user's school (unknown and foreign-school students both return **404**).
+  Verification against another school is rejected with **403**; state roles cannot use these endpoints.
+
+**Matching limitation:** this version performs exact-template 1:N lookup using canonical Base64
+and the same template format, not fingerprint similarity matching. Duplicate matches for different
+active students fail closed. Fresh scans, ISO/ANSI structure validation, and liveness detection
+require a compatible fingerprint-matcher SDK; this API is not proof of a live fingerprint scan.
+Templates must be non-empty standard Base64, at most 64 KiB encoded, and are sensitive data stored
+in the database—apply appropriate database access and encryption controls in deployment.
+
 ### Key Business Constraints Enforced
 - **Strict Financial Firewall**: State roles (`state_admin`, `inspector`) are blocked from accessing private tuition rates, invoices, or payment transactions. Every blocked attempt is recorded in the append-only `security_audit_log`.
 - **Immutable National Roll Numbers**: Student roll numbers format (`{school_code}-{next_value}`) are immutable upon creation.
