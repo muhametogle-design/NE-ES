@@ -1,331 +1,98 @@
-import math
 import os
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from datetime import date, datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
-from app.api.deps import require_school_tenant, financial_firewall, get_current_user
+from app.api.deps import require_school_tenant, require_school_manager, financial_firewall
+from app.api.v1.students import router as students_router
+from app.api.v1.teachers import router as teachers_router
+from app.api.v1.subjects import router as subjects_router
+from app.api.v1.classrooms import router as classrooms_router
 from app.core.db import get_db
-from app.core.security import hash_password
-from app.models.tenancy import User, PrivateSchool, AcademicYear
+from app.models.tenancy import User, PrivateSchool
 from app.models.academic import (
-    Student, SchoolClass, Subject, TeachingAssignment, TimetableSlot,
-    StudentGrade, SubjectAttendance, LiveAttendance
+    Student,
+    Teacher,
+    TeachingAssignment,
+    TimetableSlot,
+    StudentGrade,
+    SubjectAttendance,
+    LiveAttendance,
 )
-from app.models.finance import TuitionRate, StudentInvoice, PaymentTransaction
+from app.models.finance import StudentInvoice, PaymentTransaction
 from app.models.compliance import ExamSubmissionEvent, DailySubmissionLog
 from app.models.absence import TeacherAbsence, SubstitutionAssignment
-from app.models.syllabus import SyllabusPlan, SyllabusTopic, SyllabusProgressEntry
+from app.models.syllabus import SyllabusPlan, SyllabusTopic
 from app.models.backups import BackupRecord, BackupAuditEvent
-from app.models.biometrics import BiometricCredential, BiometricVerificationLog
+from app.models.biometrics import BiometricVerificationLog
 from app.schemas.school import (
-    StudentCreate, StudentUpdate, StudentResponse,
-    ClassCreate, ClassResponse,
-    SubjectCreate, SubjectResponse,
-    TeacherCreate, TeacherUpdate, TeacherResponse,
-    AssignmentCreate, AssignmentResponse,
-    TimetableSlotCreate, TimetableSlotResponse,
-    AttendanceMarkRequest, SubjectAttendanceResponse,
-    LiveAttendanceMarkRequest, LiveAttendanceResponse, AttendanceSubmitResponse,
-    GradeBatchRequest, GradeResponse, GradePublishRequest, ExamEventResponse,
-    AbsenceCreate, AbsenceResponse, SubstitutionAssignRequest, SubstitutionResponse,
-    SyllabusPlanCreate, SyllabusPlanResponse, SyllabusTopicCreate, SyllabusTopicResponse,
-    SyllabusProgressCreate, SyllabusProgressResponse,
-    BiometricRegisterOptionsRequest, BiometricRegisterVerifyRequest, BiometricVerifyRequest, BiometricLogResponse,
-    BackupResponse, BackupAuditEventResponse,
-    TuitionRateCreate, TuitionRateResponse, InvoiceCreate, InvoiceResponse, PaymentCreate, PaymentResponse,
-    FinanceSummary
+    AssignmentCreate,
+    AssignmentResponse,
+    TimetableSlotCreate,
+    TimetableSlotResponse,
+    AttendanceMarkRequest,
+    SubjectAttendanceResponse,
+    LiveAttendanceMarkRequest,
+    LiveAttendanceResponse,
+    AttendanceSubmitResponse,
+    GradeBatchRequest,
+    GradeResponse,
+    GradePublishRequest,
+    ExamEventResponse,
+    AbsenceCreate,
+    AbsenceResponse,
+    SubstitutionAssignRequest,
+    SubstitutionResponse,
+    SyllabusPlanCreate,
+    SyllabusPlanResponse,
+    SyllabusTopicCreate,
+    SyllabusTopicResponse,
+    SyllabusProgressCreate,
+    SyllabusProgressResponse,
+    BiometricRegisterOptionsRequest,
+    BiometricRegisterVerifyRequest,
+    BiometricVerifyRequest,
+    BiometricLogResponse,
+    BackupResponse,
+    BackupAuditEventResponse,
+    TuitionRateCreate,
+    TuitionRateResponse,
+    InvoiceCreate,
+    InvoiceResponse,
+    PaymentCreate,
+    PaymentResponse,
+    FinanceSummary,
 )
-from app.schemas.common import PaginatedResponse, MessageResponse
-from app.services.tenant_service import TenantService
+from app.schemas.common import MessageResponse
 from app.services.academic_service import AcademicService
 from app.services.finance_service import FinanceService
 from app.services.substitution_service import SubstitutionService
 from app.services.syllabus_service import SyllabusService
 from app.services.biometric_service import BiometricService
 from app.services.backup_service import BackupService
+from app.services.teacher_scoping import (
+    assigned_to, require_class_access, require_course_access, validate_roster,
+)
 
 router = APIRouter(prefix="/v1/school", tags=["school"])
 
-# ==========================================
-# 1. STUDENTS
-# ==========================================
-@router.get("/students", response_model=PaginatedResponse[StudentResponse])
-async def list_students(
-    q: Optional[str] = None,
-    class_id: Optional[int] = None,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
-    user: User = Depends(require_school_tenant),
-    db: Session = Depends(get_db),
-):
-    query = db.query(Student).filter(Student.school_id == user.school_id)
-    if class_id:
-        query = query.filter(Student.class_id == class_id)
-    if q:
-        search = f"%{q}%"
-        query = query.filter(or_(
-            Student.first_name.ilike(search),
-            Student.last_name.ilike(search),
-            Student.roll_number.ilike(search),
-            Student.national_student_id.ilike(search)
-        ))
+# These same handlers are mounted at /api/v1/{students,teachers,subjects,classrooms}.
+# Keeping aliases here prevents older clients from bypassing the scope checks.
 
-    total = query.count()
-    pages = max(1, math.ceil(total / per_page))
-    items = query.order_by(Student.roll_number).offset((page - 1) * per_page).limit(per_page).all()
-    return {"items": items, "total": total, "page": page, "pages": pages}
-
-@router.post("/students", response_model=StudentResponse, status_code=201)
-async def create_student(
-    student: StudentCreate,
-    user: User = Depends(require_school_tenant),
-    db: Session = Depends(get_db),
-):
-    school = db.query(PrivateSchool).filter(PrivateSchool.id == user.school_id).first()
-    if not school:
-        raise HTTPException(404, "School not found")
-
-    next_num = TenantService.get_next_roll_number(db, user.school_id)
-    roll_number = f"{school.school_code}-{next_num}"
-
-    db_student = Student(
-        school_id=user.school_id,
-        national_student_id=roll_number,
-        roll_number=roll_number,
-        first_name=student.first_name,
-        last_name=student.last_name,
-        gender=student.gender,
-        date_of_birth=student.date_of_birth,
-        class_id=student.class_id,
-        is_active=True
-    )
-    db.add(db_student)
-    db.commit()
-    db.refresh(db_student)
-    return db_student
-
-@router.get("/students/{ne_sid}", response_model=StudentResponse)
-async def get_student(ne_sid: str, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-
-    if not student:
-        raise HTTPException(404, f"Student not found with identifier '{ne_sid}' in this school")
-    return student
-
-@router.put("/students/{ne_sid}", response_model=StudentResponse)
-@router.patch("/students/{ne_sid}", response_model=StudentResponse)
-async def update_student(
-    ne_sid: str,
-    update_data: StudentUpdate,
-    user: User = Depends(require_school_tenant),
-    db: Session = Depends(get_db)
-):
-    query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-
-    if not student:
-        raise HTTPException(404, f"Student not found with identifier '{ne_sid}' in this school")
-
-    data = update_data.model_dump(exclude_unset=True)
-    # Roll number and national student ID are strictly immutable
-    data.pop("roll_number", None)
-    data.pop("national_student_id", None)
-    data.pop("id", None)
-    data.pop("school_id", None)
-
-    for field, value in data.items():
-        setattr(student, field, value)
-
-    db.commit()
-    db.refresh(student)
-    return student
-
-@router.delete("/students/{ne_sid}", response_model=MessageResponse)
-async def delete_student(ne_sid: str, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    query = db.query(Student).filter(Student.school_id == user.school_id)
-    if ne_sid.isdigit():
-        student = query.filter(or_(Student.id == int(ne_sid), Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-    else:
-        student = query.filter(or_(Student.roll_number == ne_sid, Student.national_student_id == ne_sid)).first()
-
-    if not student:
-        raise HTTPException(404, "Student not found in this school")
-
-    student.is_active = False
-    db.commit()
-    return {"message": "Student deactivated successfully"}
-
-# ==========================================
-# 2. CLASSES & SUBJECTS
-# ==========================================
-@router.get("/classes", response_model=List[ClassResponse])
-async def list_classes(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    return db.query(SchoolClass).filter(SchoolClass.school_id == user.school_id).order_by(SchoolClass.class_level, SchoolClass.stream).all()
-
-@router.post("/classes", response_model=ClassResponse, status_code=201)
-async def create_class(data: ClassCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    existing = db.query(SchoolClass).filter_by(
-        school_id=user.school_id,
-        class_level=data.class_level,
-        stream=data.stream
-    ).first()
-    if existing:
-        raise HTTPException(400, "Class with this level and stream already exists")
-
-    school_class = SchoolClass(
-        school_id=user.school_id,
-        class_level=data.class_level,
-        stream=data.stream,
-        academic_year_id=data.academic_year_id
-    )
-    db.add(school_class)
-    db.commit()
-    db.refresh(school_class)
-    return school_class
-
-@router.get("/classes/{id}", response_model=ClassResponse)
-async def get_class(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
-    if not c:
-        raise HTTPException(404, "Class not found")
-    return c
-
-@router.get("/classes/{id}/breakdown")
-async def class_breakdown(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
-    if not c:
-        raise HTTPException(404, "Class not found")
-
-    students = db.query(Student).filter_by(class_id=id, school_id=user.school_id, is_active=True).all()
-    male_count = sum(1 for s in students if s.gender.lower() == "male")
-    female_count = sum(1 for s in students if s.gender.lower() == "female")
-
-    assignments = db.query(TeachingAssignment).filter_by(class_id=id, school_id=user.school_id).all()
-    subjects_info = []
-    for a in assignments:
-        subjects_info.append({
-            "subject_id": a.subject_id,
-            "subject_name": a.subject.name if a.subject else "Unknown",
-            "subject_code": a.subject.code if a.subject else "N/A",
-            "teacher_id": a.teacher_id,
-            "teacher_name": f"{a.teacher.first_name} {a.teacher.last_name}" if a.teacher else "Unassigned"
-        })
-
-    return {
-        "class_id": c.id,
-        "class_level": c.class_level,
-        "stream": c.stream,
-        "total_students": len(students),
-        "male_students": male_count,
-        "female_students": female_count,
-        "subjects": subjects_info
-    }
-
-@router.get("/classes/{id}/subjects", response_model=List[SubjectResponse])
-async def list_class_subjects(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
-    if not c:
-        raise HTTPException(404, "Class not found")
-    return db.query(Subject).filter(Subject.school_id == user.school_id, Subject.level == c.class_level).all()
-
-@router.get("/subjects", response_model=List[SubjectResponse])
-async def list_subjects(level: Optional[int] = None, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    query = db.query(Subject).filter(Subject.school_id == user.school_id)
-    if level:
-        query = query.filter(Subject.level == level)
-    return query.order_by(Subject.level, Subject.code).all()
-
-@router.post("/subjects", response_model=SubjectResponse, status_code=201)
-async def create_subject(data: SubjectCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    existing = db.query(Subject).filter_by(school_id=user.school_id, code=data.code).first()
-    if existing:
-        raise HTTPException(400, "Subject code already exists in this school")
-
-    sub = Subject(school_id=user.school_id, code=data.code, name=data.name, level=data.level)
-    db.add(sub)
-    db.commit()
-    db.refresh(sub)
-    return sub
-
-# ==========================================
-# 3. TEACHERS & ASSIGNMENTS
-# ==========================================
-@router.get("/teachers", response_model=List[TeacherResponse])
-async def list_teachers(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    return db.query(User).filter(User.school_id == user.school_id, User.role == "teacher").all()
-
-@router.post("/teachers", response_model=TeacherResponse, status_code=201)
-async def create_teacher(data: TeacherCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == data.email).first()
-    if existing:
-        raise HTTPException(400, "User with this email already exists")
-
-    staff_id = TenantService.generate_staff_id("NE-TID")
-    teacher = User(
-        school_id=user.school_id,
-        email=data.email,
-        password_hash=hash_password(data.password),
-        role="teacher",
-        first_name=data.first_name,
-        last_name=data.last_name,
-        staff_identifier=staff_id,
-        phone=data.phone,
-        qualifications=data.qualifications,
-        designation=data.designation or "Teacher",
-        bio=data.bio,
-        is_department_head=data.is_department_head,
-        is_active=True
-    )
-    db.add(teacher)
-    db.commit()
-    db.refresh(teacher)
-    return teacher
-
-@router.get("/teachers/{id}", response_model=TeacherResponse)
-async def get_teacher(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    t = db.query(User).filter(User.id == id, User.school_id == user.school_id, User.role == "teacher").first()
-    if not t:
-        raise HTTPException(404, "Teacher not found in this school")
-    return t
-
-@router.put("/teachers/{id}", response_model=TeacherResponse)
-async def update_teacher(id: int, data: TeacherUpdate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    t = db.query(User).filter(User.id == id, User.school_id == user.school_id).first()
-    if not t:
-        raise HTTPException(404, "Teacher not found in this school")
-
-    update_dict = data.model_dump(exclude_unset=True)
-    for k, v in update_dict.items():
-        setattr(t, k, v)
-    db.commit()
-    db.refresh(t)
-    return t
-
-@router.get("/classes/{cid}/subjects/{sid}/assignment")
-async def get_class_subject_assignment(cid: int, sid: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    assign = db.query(TeachingAssignment).filter_by(school_id=user.school_id, class_id=cid, subject_id=sid).first()
-    if not assign:
-        return {"assigned": False, "teacher": None}
-    return {
-        "assigned": True,
-        "teacher_id": assign.teacher_id,
-        "teacher_name": f"{assign.teacher.first_name} {assign.teacher.last_name}" if assign.teacher else "Unknown",
-        "email": assign.teacher.email if assign.teacher else None
-    }
+router.include_router(students_router, prefix="/students")
+router.include_router(teachers_router, prefix="/teachers")
+router.include_router(subjects_router, prefix="/subjects")
+router.include_router(classrooms_router, prefix="/classes")
 
 @router.post("/assignments", response_model=AssignmentResponse, status_code=201)
-async def create_assignment(data: AssignmentCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def create_assignment(data: AssignmentCreate, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
+    require_course_access(db, user, data.class_id, data.subject_id)
+    teacher = db.query(Teacher).filter_by(id=data.teacher_id, school_id=user.school_id, is_active=True).first()
+    if not teacher:
+        raise HTTPException(404, "Teacher not found in this school")
     existing = db.query(TeachingAssignment).filter_by(
         school_id=user.school_id,
         class_id=data.class_id,
@@ -367,6 +134,15 @@ async def list_timetable(
     db: Session = Depends(get_db)
 ):
     query = db.query(TimetableSlot).filter(TimetableSlot.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.filter(
+            TimetableSlot.teacher.has(Teacher.user_id == user.id),
+            assigned_to(user, class_id=TimetableSlot.class_id, subject_id=TimetableSlot.subject_id),
+        )
+        if teacher_id is not None and teacher_id != user.teacher_id:
+            raise HTTPException(403, "Not authorized to access another teacher's timetable")
+    if class_id is not None:
+        require_class_access(db, user, class_id)
     if class_id:
         query = query.filter(TimetableSlot.class_id == class_id)
     if teacher_id:
@@ -393,7 +169,10 @@ async def list_timetable(
     return result
 
 @router.post("/timetable", response_model=TimetableSlotResponse, status_code=201)
-async def create_timetable_slot(data: TimetableSlotCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def create_timetable_slot(data: TimetableSlotCreate, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
+    require_course_access(db, user, data.class_id, data.subject_id)
+    if not db.query(Teacher).filter_by(id=data.teacher_id, school_id=user.school_id, is_active=True).first():
+        raise HTTPException(404, "Teacher not found in this school")
     existing = db.query(TimetableSlot).filter_by(
         school_id=user.school_id,
         class_id=data.class_id,
@@ -433,7 +212,7 @@ async def create_timetable_slot(data: TimetableSlotCreate, user: User = Depends(
     }
 
 @router.delete("/timetable/{id}", response_model=MessageResponse)
-async def delete_timetable_slot(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def delete_timetable_slot(id: int, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     slot = db.query(TimetableSlot).filter_by(id=id, school_id=user.school_id).first()
     if not slot:
         raise HTTPException(404, "Slot not found")
@@ -452,6 +231,7 @@ async def get_subject_attendance(
     user: User = Depends(require_school_tenant),
     db: Session = Depends(get_db)
 ):
+    require_course_access(db, user, class_id, subject_id)
     records = db.query(SubjectAttendance).filter(
         SubjectAttendance.school_id == user.school_id,
         SubjectAttendance.class_id == class_id,
@@ -490,7 +270,7 @@ async def mark_attendance(data: AttendanceMarkRequest, user: User = Depends(requ
 @router.post("/attendance/submit", response_model=AttendanceSubmitResponse)
 async def submit_attendance_daily(
     submission_date: Optional[date] = None,
-    user: User = Depends(require_school_tenant),
+    user: User = Depends(require_school_manager),
     db: Session = Depends(get_db)
 ):
     log = AcademicService.submit_daily_attendance(db, user.school_id, submission_date)
@@ -504,6 +284,13 @@ async def submit_attendance_daily(
 
 @router.get("/attendance/live", response_model=List[LiveAttendanceResponse])
 async def list_live_attendance(slot_id: int, att_date: date = Query(default_factory=date.today), user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+    slot = db.query(TimetableSlot).filter_by(id=slot_id, school_id=user.school_id).first()
+    if not slot:
+        raise HTTPException(404, "Timetable slot not found")
+    if not AcademicService.check_teacher_authority(
+        db, user, slot.class_id, slot.subject_id, att_date, slot.id,
+    ):
+        raise HTTPException(403, "Not authorized to view attendance for this session")
     records = db.query(LiveAttendance).filter_by(school_id=user.school_id, timetable_slot_id=slot_id, date=att_date).all()
     return records
 
@@ -513,6 +300,11 @@ async def mark_live_attendance(data: LiveAttendanceMarkRequest, user: User = Dep
     if not slot:
         raise HTTPException(404, "Timetable slot not found")
 
+    if not AcademicService.check_teacher_authority(
+        db, user, slot.class_id, slot.subject_id, data.date, slot.id,
+    ):
+        raise HTTPException(403, "Not authorized to mark attendance for this session")
+    validate_roster(db, user, slot.class_id, [item.student_id for item in data.records])
     for item in data.records:
         rec = db.query(LiveAttendance).filter_by(
             school_id=user.school_id,
@@ -547,6 +339,7 @@ async def list_grades(
     user: User = Depends(require_school_tenant),
     db: Session = Depends(get_db)
 ):
+    require_course_access(db, user, class_id, subject_id)
     grades = db.query(StudentGrade).join(Student, Student.id == StudentGrade.student_id).filter(
         StudentGrade.school_id == user.school_id,
         StudentGrade.subject_id == subject_id,
@@ -599,14 +392,22 @@ async def publish_grades(data: GradePublishRequest, user: User = Depends(require
 
 @router.get("/exam-events", response_model=List[ExamEventResponse])
 async def list_exam_events(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    return db.query(ExamSubmissionEvent).filter(ExamSubmissionEvent.school_id == user.school_id).order_by(ExamSubmissionEvent.created_at.desc()).all()
+    query = db.query(ExamSubmissionEvent).filter(ExamSubmissionEvent.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.filter(assigned_to(user, subject_id=ExamSubmissionEvent.exam_id))
+    return query.order_by(ExamSubmissionEvent.created_at.desc()).all()
 
 # ==========================================
 # 7. ABSENCES & SUBSTITUTIONS
 # ==========================================
 @router.get("/absences", response_model=List[AbsenceResponse])
 async def list_absences(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    absences = db.query(TeacherAbsence).filter(TeacherAbsence.school_id == user.school_id).order_by(TeacherAbsence.date.desc()).all()
+    query = db.query(TeacherAbsence).filter(TeacherAbsence.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.filter(TeacherAbsence.teacher.has(
+            (Teacher.user_id == user.id) & Teacher.is_active.is_(True)
+        ))
+    absences = query.order_by(TeacherAbsence.date.desc()).all()
     result = []
     for a in absences:
         result.append({
@@ -623,6 +424,10 @@ async def list_absences(user: User = Depends(require_school_tenant), db: Session
 
 @router.post("/absences", response_model=AbsenceResponse, status_code=201)
 async def report_absence(data: AbsenceCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+    if user.role == "teacher" and not db.query(Teacher).filter_by(
+        id=data.teacher_id, user_id=user.id, school_id=user.school_id, is_active=True,
+    ).first():
+        raise HTTPException(403, "Not authorized to report another teacher's absence")
     absence = SubstitutionService.record_absence(db, user.school_id, data.teacher_id, data.date, data.reason)
     return {
         "id": absence.id,
@@ -637,7 +442,12 @@ async def report_absence(data: AbsenceCreate, user: User = Depends(require_schoo
 
 @router.get("/substitutions", response_model=List[SubstitutionResponse])
 async def list_substitutions(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    subs = db.query(SubstitutionAssignment).filter(SubstitutionAssignment.school_id == user.school_id).order_by(SubstitutionAssignment.created_at.desc()).all()
+    query = db.query(SubstitutionAssignment).filter(SubstitutionAssignment.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.filter(SubstitutionAssignment.substitute_teacher.has(
+            (Teacher.user_id == user.id) & Teacher.is_active.is_(True)
+        ))
+    subs = query.order_by(SubstitutionAssignment.created_at.desc()).all()
     result = []
     for s in subs:
         result.append({
@@ -663,13 +473,13 @@ async def list_substitutions(user: User = Depends(require_school_tenant), db: Se
 async def get_substitution_candidates(
     slot_id: int,
     abs_date: date = Query(default_factory=date.today),
-    user: User = Depends(require_school_tenant),
+    user: User = Depends(require_school_manager),
     db: Session = Depends(get_db)
 ):
     return SubstitutionService.find_candidates_for_slot(db, user.school_id, slot_id, abs_date)
 
 @router.post("/substitutions", response_model=SubstitutionResponse, status_code=201)
-async def assign_substitution(data: SubstitutionAssignRequest, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def assign_substitution(data: SubstitutionAssignRequest, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     sub = SubstitutionService.assign_substitution(db, user.school_id, data.absence_id, data.substitute_teacher_id, data.timetable_slot_id)
     return {
         "id": sub.id,
@@ -683,7 +493,7 @@ async def assign_substitution(data: SubstitutionAssignRequest, user: User = Depe
     }
 
 @router.post("/substitutions/{id}/confirm", response_model=SubstitutionResponse)
-async def confirm_substitution(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def confirm_substitution(id: int, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     sub = SubstitutionService.confirm_substitution(db, user.school_id, id)
     return {
         "id": sub.id,
@@ -702,13 +512,17 @@ async def confirm_substitution(id: int, user: User = Depends(require_school_tena
 @router.get("/syllabus/plans", response_model=List[SyllabusPlanResponse])
 async def list_syllabus_plans(class_id: Optional[int] = None, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
     query = db.query(SyllabusPlan).filter(SyllabusPlan.school_id == user.school_id)
-    if class_id:
+    if user.role == "teacher":
+        query = query.filter(assigned_to(user, class_id=SyllabusPlan.class_id, subject_id=SyllabusPlan.subject_id))
+    if class_id is not None:
+        require_class_access(db, user, class_id)
         query = query.filter(SyllabusPlan.class_id == class_id)
     plans = query.all()
     return [SyllabusService.get_plan_summary(db, p.id) for p in plans]
 
 @router.post("/syllabus/plans", response_model=SyllabusPlanResponse, status_code=201)
 async def create_syllabus_plan(data: SyllabusPlanCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+    require_course_access(db, user, data.class_id, data.subject_id)
     plan = SyllabusService.create_or_get_plan(
         db=db,
         school_id=user.school_id,
@@ -725,6 +539,7 @@ async def get_syllabus_plan(id: int, user: User = Depends(require_school_tenant)
     plan = db.query(SyllabusPlan).filter_by(id=id, school_id=user.school_id).first()
     if not plan:
         raise HTTPException(404, "Plan not found")
+    require_course_access(db, user, plan.class_id, plan.subject_id)
     return SyllabusService.get_plan_summary(db, id)
 
 @router.get("/syllabus/topics", response_model=List[SyllabusTopicResponse])
@@ -732,11 +547,16 @@ async def list_syllabus_topics(plan_id: int, user: User = Depends(require_school
     plan = db.query(SyllabusPlan).filter_by(id=plan_id, school_id=user.school_id).first()
     if not plan:
         raise HTTPException(404, "Plan not found")
+    require_course_access(db, user, plan.class_id, plan.subject_id)
     summary = SyllabusService.get_plan_summary(db, plan_id)
     return summary["topics"]
 
 @router.post("/syllabus/topics", response_model=SyllabusTopicResponse, status_code=201)
 async def create_syllabus_topic(data: SyllabusTopicCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+    plan = db.query(SyllabusPlan).filter_by(id=data.plan_id, school_id=user.school_id).first()
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    require_course_access(db, user, plan.class_id, plan.subject_id)
     topic = SyllabusService.add_topic(db, data.plan_id, data.unit_number, data.title, data.description, data.planned_completion_date)
     return {
         "id": topic.id,
@@ -751,6 +571,12 @@ async def create_syllabus_topic(data: SyllabusTopicCreate, user: User = Depends(
 
 @router.post("/syllabus/progress", response_model=SyllabusProgressResponse, status_code=201)
 async def record_syllabus_progress(data: SyllabusProgressCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+    topic = db.query(SyllabusTopic).join(SyllabusPlan).filter(
+        SyllabusTopic.id == data.topic_id, SyllabusPlan.school_id == user.school_id,
+    ).first()
+    if not topic:
+        raise HTTPException(404, "Syllabus topic not found")
+    require_course_access(db, user, topic.plan.class_id, topic.plan.subject_id)
     entry = SyllabusService.record_progress(db, data.topic_id, user.id, data.date_covered, data.notes)
     return {
         "id": entry.id,
@@ -764,7 +590,10 @@ async def record_syllabus_progress(data: SyllabusProgressCreate, user: User = De
 
 @router.get("/syllabus/status")
 async def get_syllabus_status(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    plans = db.query(SyllabusPlan).filter(SyllabusPlan.school_id == user.school_id).all()
+    query = db.query(SyllabusPlan).filter(SyllabusPlan.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.filter(assigned_to(user, class_id=SyllabusPlan.class_id, subject_id=SyllabusPlan.subject_id))
+    plans = query.all()
     summaries = [SyllabusService.get_plan_summary(db, p.id) for p in plans]
     on_track = sum(1 for s in summaries if s["status"] in ["on_track", "completed"])
     behind = sum(1 for s in summaries if s["status"] == "behind")
@@ -955,7 +784,10 @@ async def create_tuition_rate(data: TuitionRateCreate, user: User = Depends(fina
 # ==========================================
 @router.get("/analytics/enrollment")
 async def enrollment_analytics(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    students = db.query(Student).filter_by(school_id=user.school_id, is_active=True).all()
+    query = db.query(Student).filter_by(school_id=user.school_id, is_active=True)
+    if user.role == "teacher":
+        query = query.filter(assigned_to(user, class_id=Student.class_id))
+    students = query.all()
     male = sum(1 for s in students if s.gender.lower() == "male")
     female = sum(1 for s in students if s.gender.lower() == "female")
     
@@ -977,8 +809,11 @@ async def attendance_analytics(user: User = Depends(require_school_tenant), db: 
     log = db.query(DailySubmissionLog).filter_by(school_id=user.school_id, log_date=today).first()
     submitted = log.attendance_submitted if log else False
     
-    total_records = db.query(SubjectAttendance).filter_by(school_id=user.school_id, date=today).count()
-    present_records = db.query(SubjectAttendance).filter_by(school_id=user.school_id, date=today, status="present").count()
+    query = db.query(SubjectAttendance).filter_by(school_id=user.school_id, date=today)
+    if user.role == "teacher":
+        query = query.filter(assigned_to(user, class_id=SubjectAttendance.class_id, subject_id=SubjectAttendance.subject_id))
+    total_records = query.count()
+    present_records = query.filter(SubjectAttendance.status == "present").count()
     rate = round((present_records / max(1, total_records)) * 100.0, 1) if total_records > 0 else 94.5
 
     return {
@@ -991,8 +826,14 @@ async def attendance_analytics(user: User = Depends(require_school_tenant), db: 
 
 @router.get("/analytics/academic-performance")
 async def academic_performance(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    grades = db.query(StudentGrade).filter_by(school_id=user.school_id).all()
-    avg_score = db.query(func.avg(StudentGrade.score)).filter(StudentGrade.school_id == user.school_id).scalar() or 0.0
+    query = db.query(StudentGrade).filter(StudentGrade.school_id == user.school_id)
+    if user.role == "teacher":
+        query = query.join(Student).filter(
+            Student.school_id == user.school_id,
+            assigned_to(user, class_id=Student.class_id, subject_id=StudentGrade.subject_id),
+        )
+    grades = query.all()
+    avg_score = sum(grade.score for grade in grades) / len(grades) if grades else 0.0
     
     distribution = {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
     for g in grades:

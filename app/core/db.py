@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator, Optional
 from app.core.config import settings
@@ -17,6 +17,14 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {},
     pool_pre_ping=True,
 )
+
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(connection, _):
+        # Enforce SET NULL/CASCADE on live connections. Alembic uses its own
+        # connection with FK checks off during SQLite batch table rebuilds.
+        connection.execute("PRAGMA foreign_keys=ON")
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

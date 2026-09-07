@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.tenancy import PrivateSchool, SchoolRollSequence, User, AcademicYear
 from app.models.academic import (
-    District, SchoolClass, Subject, TeachingAssignment, TimetableSlot,
+    District, SchoolClass, Subject, Teacher, TeachingAssignment, TimetableSlot,
     Student, StudentGrade, SubjectAttendance, LiveAttendance
 )
 from app.models.finance import TuitionRate, StudentInvoice, PaymentTransaction
@@ -23,6 +23,7 @@ all_models = [
     AcademicYear,
     SchoolClass,
     Subject,
+    Teacher,
     TeachingAssignment,
     TimetableSlot,
     Student,
@@ -58,6 +59,7 @@ __all__ = [
     "AcademicYear",
     "SchoolClass",
     "Subject",
+    "Teacher",
     "TeachingAssignment",
     "TimetableSlot",
     "Student",

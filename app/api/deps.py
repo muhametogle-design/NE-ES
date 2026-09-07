@@ -106,6 +106,13 @@ def require_school_tenant(user: User = Depends(get_current_user)) -> User:
         )
     return user
 
+def require_school_manager(user: User = Depends(require_school_tenant)) -> User:
+    """Administrative changes must not let teachers grant themselves scope."""
+    if user.role != "school_manager":
+        raise HTTPException(status_code=403, detail="School manager authorization required")
+    return user
+
+
 def state_access_guard(user: User = Depends(get_current_user)) -> User:
     if user.role not in ["state_admin", "inspector"]:
         raise HTTPException(

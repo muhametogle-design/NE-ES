@@ -20,10 +20,13 @@ services:
       APP_ENV: production
       AUTO_SEED_DEMO: "true"
       PLATFORM_TIMEZONE: Africa/Nairobi
+    volumes:
+      - photo_uploads:/app/uploads
     depends_on:
       - postgres
     ports:
       - "8000:8000"
 
 volumes:
+  photo_uploads:
   postgres_data:

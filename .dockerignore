@@ -18,3 +18,4 @@ frontend/dist
 *.sqlite
 data/*.db
 data/backups/*
+uploads/

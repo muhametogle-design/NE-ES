@@ -9,6 +9,8 @@ class LoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
+    teacher_id: Optional[int] = None
+    photo_url: Optional[str] = None
     school_id: Optional[int] = None
     email: str
     role: str

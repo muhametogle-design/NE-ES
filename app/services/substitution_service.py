@@ -2,14 +2,13 @@ from typing import List, Dict, Any, Optional
 from datetime import date
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from app.models.tenancy import User
-from app.models.academic import TimetableSlot, TeachingAssignment, SchoolClass
+from app.models.academic import Teacher, TimetableSlot, TeachingAssignment
 from app.models.absence import TeacherAbsence, SubstitutionAssignment
 
 class SubstitutionService:
     @staticmethod
     def record_absence(db: Session, school_id: int, teacher_id: int, abs_date: date, reason: Optional[str] = None) -> TeacherAbsence:
-        teacher = db.query(User).filter_by(id=teacher_id, school_id=school_id).first()
+        teacher = db.query(Teacher).filter_by(id=teacher_id, school_id=school_id, is_active=True).first()
         if not teacher:
             raise HTTPException(status_code=404, detail="Teacher not found in this school")
 
@@ -37,11 +36,10 @@ class SubstitutionService:
         subject_id = slot.subject_id
 
         # All teachers in school except the absent teacher
-        teachers = db.query(User).filter(
-            User.school_id == school_id,
-            User.role == "teacher",
-            User.is_active == True,
-            User.id != absent_teacher_id
+        teachers = db.query(Teacher).filter(
+            Teacher.school_id == school_id,
+            Teacher.is_active == True,
+            Teacher.id != absent_teacher_id
         ).all()
 
         # Slot collisions for this period
@@ -117,9 +115,12 @@ class SubstitutionService:
         if not slot:
             raise HTTPException(status_code=404, detail="Timetable slot not found")
 
-        sub_teacher = db.query(User).filter_by(id=substitute_teacher_id, school_id=school_id).first()
+        sub_teacher = db.query(Teacher).filter_by(id=substitute_teacher_id, school_id=school_id, is_active=True).first()
         if not sub_teacher:
             raise HTTPException(status_code=404, detail="Substitute teacher not found")
+
+        if slot.teacher_id != absence.teacher_id:
+            raise HTTPException(status_code=400, detail="Slot does not belong to the absent teacher")
 
         assignment = SubstitutionAssignment(
             school_id=school_id,
