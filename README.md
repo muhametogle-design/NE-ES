@@ -8,6 +8,12 @@ NE-EMIS consists of two primary operational domains:
 1. **School Tenant Operations**: Private school portal for enrollment, attendance, substitutions, syllabus pacing, student biometrics (WebAuthn/FIDO2), report cards, and private tuition billing.
 2. **State Ministry Oversight**: Oversight center for institution directories, roll sequence control, national student registry lookup, real-time attendance compliance mapping, and automated 15:00 EAT RED ALARM auditing.
 
+### Districts (Regional Education Offices)
+Schools can be grouped into state-managed **districts** (`/api/v1/districts`). State roles may list/read
+districts (`GET`, filterable by `region`, `is_active`, `q`, paginated); only `state_admin` may create or
+update them (`POST`, `PATCH`). District codes are unique and case-insensitive (normalised to upper-case);
+`private_schools.district_id` is an optional FK (`ON DELETE SET NULL`).
+
 ### Key Business Constraints Enforced
 - **Strict Financial Firewall**: State roles (`state_admin`, `inspector`) are blocked from accessing private tuition rates, invoices, or payment transactions. Every blocked attempt is recorded in the append-only `security_audit_log`.
 - **Immutable National Roll Numbers**: Student roll numbers format (`{school_code}-{next_value}`) are immutable upon creation.
@@ -30,8 +36,18 @@ source .venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements-dev.txt
 
-# Initialize & Seed Demo Database
-python -m scripts.seed_data --reset
+# Configure the database (optional — defaults to SQLite at ./data/schoolsystem.db)
+cp .env.example .env
+# For a local PostgreSQL instance, set in .env:
+#   DATABASE_URL=postgresql+psycopg2://postgres:12345@localhost:5432/ne_es_dev
+# and create the database once:
+#   psql -U postgres -h localhost -c "CREATE DATABASE ne_es_dev;"
+
+# Apply schema migrations (alembic/env.py loads DATABASE_URL from .env)
+alembic upgrade head
+
+# Seed default records (state admins, 5 school tenants, managers/teachers, demo data)
+python -m scripts.seed          # idempotent; add --reset to wipe a local SQLite file first
 
 # Start Backend Server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -50,6 +66,9 @@ npm run dev
 ```bash
 pytest
 ```
+The suite runs against an isolated in-memory SQLite database. `tests/conftest.py` sets
+`APP_ENV=test`, which makes the API lifespan skip schema initialisation and demo seeding,
+so `pytest` never touches the database configured in `.env` (e.g. `ne_es_dev`).
 
 ---
 

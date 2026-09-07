@@ -14,6 +14,7 @@ from app.core.ws import ws_manager
 from app.api.auth import router as auth_router
 from app.api.school import router as school_router
 from app.api.state import router as state_router
+from app.api.v1 import v1_router
 from app.api.ws import router as ws_router
 from app.services.scheduler import compliance_scheduler, backup_scheduler
 from app.services.seed import seed_demo_data
@@ -24,11 +25,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ne_emis")
 
+# Environments in which the lifespan must NOT touch the configured database.
+# The test suite (tests/conftest.py) provisions its own in-memory SQLite engine
+# and overrides ``get_db``; without this gate every ``TestClient(app)`` startup
+# would run ``init_db()`` + demo seeding against the real ``DATABASE_URL``
+# (e.g. the ne_es_dev PostgreSQL database).
+TEST_ENVIRONMENTS = ("test", "testing")
+
+
+def is_test_environment() -> bool:
+    return settings.APP_ENV.strip().lower() in TEST_ENVIRONMENTS
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Initialize DB
-    init_db()
-    logger.info("Database schema verified and initialized.")
+    manage_database = not is_test_environment()
+
+    # 1. Initialize DB (skipped under APP_ENV=test/testing — the test suite owns its own schema)
+    if manage_database:
+        init_db()
+        logger.info("Database schema verified and initialized.")
+    else:
+        logger.info(
+            "APP_ENV=%s: skipping schema initialization and demo seeding.",
+            settings.APP_ENV,
+        )
 
     # 2. Bind event loop to WebSocket Manager
     try:
@@ -37,8 +58,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not bind loop to ws_manager: {e}")
 
-    # 3. Seed demo data if database is empty
-    if settings.AUTO_SEED_DEMO:
+    # 3. Seed demo data if database is empty (never under APP_ENV=test/testing)
+    if manage_database and settings.AUTO_SEED_DEMO:
         db = SessionLocal()
         try:
             from app.models.tenancy import PrivateSchool
@@ -115,6 +136,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router, prefix="/api")
 app.include_router(school_router, prefix="/api")
 app.include_router(state_router, prefix="/api")
+app.include_router(v1_router, prefix="/api")
 app.include_router(ws_router, prefix="/ws")
 
 @app.get("/health")

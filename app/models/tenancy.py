@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, UniqueConstraint, Uuid
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.models.base import Base
@@ -7,6 +7,8 @@ class PrivateSchool(Base):
     __tablename__ = "private_schools"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Optional REO district assignment (state oversight grouping).
+    district_id = Column(Uuid, ForeignKey("districts.id", ondelete="SET NULL"), nullable=True, index=True)
     state_license_number = Column(String, unique=True, index=True)
     school_code = Column(String(2), unique=True, index=True, nullable=False)
     school_name = Column(String, nullable=False)
@@ -25,6 +27,7 @@ class PrivateSchool(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     # Relationships
+    district = relationship("District", back_populates="schools")
     users = relationship("User", back_populates="school", cascade="all, delete-orphan")
     classes = relationship("SchoolClass", back_populates="school", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="school", cascade="all, delete-orphan")

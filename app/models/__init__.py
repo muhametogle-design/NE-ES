@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.tenancy import PrivateSchool, SchoolRollSequence, User, AcademicYear
 from app.models.academic import (
-    SchoolClass, Subject, TeachingAssignment, TimetableSlot,
+    District, SchoolClass, Subject, TeachingAssignment, TimetableSlot,
     Student, StudentGrade, SubjectAttendance, LiveAttendance
 )
 from app.models.finance import TuitionRate, StudentInvoice, PaymentTransaction
@@ -15,6 +15,7 @@ from app.models.absence import TeacherAbsence, SubstitutionAssignment
 from app.models.syllabus import SyllabusPlan, SyllabusTopic, SyllabusProgressEntry
 
 all_models = [
+    District,
     PrivateSchool,
     SchoolRollSequence,
     User,
@@ -48,6 +49,7 @@ all_models = [
 
 __all__ = [
     "Base",
+    "District",
     "PrivateSchool",
     "SchoolRollSequence",
     "User",

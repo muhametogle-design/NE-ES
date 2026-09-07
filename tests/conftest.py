@@ -1,4 +1,15 @@
 import os
+
+# ---------------------------------------------------------------------------
+# Test isolation: mark this process as a test environment BEFORE anything from
+# ``app`` is imported. ``app.core.config.settings`` is built at import time and
+# environment variables take precedence over ``.env``; ``app.main``'s lifespan
+# checks ``APP_ENV`` to skip ``init_db()`` and demo seeding, so a ``TestClient``
+# never touches the live ``DATABASE_URL`` (e.g. the ne_es_dev PostgreSQL DB).
+# ``setdefault`` keeps an explicit ``APP_ENV=testing`` from the shell intact.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("APP_ENV", "test")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -6,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.core.config import settings
 from app.core.db import Base, get_db, set_rls_context
 from app.core.security import create_access_token
 from app.services.seed import seed_demo_data
@@ -21,6 +33,20 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_backup_dir(tmp_path_factory):
+    """Write backup snapshots produced by the tests to a throwaway directory.
+
+    ``BackupService`` reads ``settings.BACKUP_DIR`` at call time, so pointing it
+    at pytest's temp dir keeps ``data/backups/`` (the real, .gitignored backup
+    location) free of test artefacts.
+    """
+    original = settings.BACKUP_DIR
+    settings.BACKUP_DIR = str(tmp_path_factory.mktemp("backups"))
+    yield settings.BACKUP_DIR
+    settings.BACKUP_DIR = original
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
