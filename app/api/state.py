@@ -10,7 +10,7 @@ from app.api.deps import state_access_guard
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.tenancy import User, PrivateSchool, SchoolRollSequence
-from app.models.academic import Student, SchoolClass, Subject, TeachingAssignment, LiveAttendance
+from app.models.academic import Student, SchoolClass, Subject, Teacher, TeachingAssignment, LiveAttendance
 from app.models.compliance import DailySubmissionLog, CommunicationLog, ExamSubmissionEvent
 from app.schemas.state import (
     StateSchoolView, StateSchoolDetailView, StateSchoolCreate,
@@ -32,7 +32,7 @@ async def list_schools(user: User = Depends(state_access_guard), db: Session = D
     results = []
     for s in schools:
         st_count = db.query(Student).filter(Student.school_id == s.id, Student.is_active == True).count()
-        t_count = db.query(User).filter(User.school_id == s.id, User.role == "teacher", User.is_active == True).count()
+        t_count = db.query(Teacher).filter(Teacher.school_id == s.id, Teacher.is_active == True).count()
         results.append({
             "id": s.id,
             "school_code": s.school_code,
@@ -55,7 +55,7 @@ async def get_school(id: int, user: User = Depends(state_access_guard), db: Sess
     if not s:
         raise HTTPException(404, "School not found")
     st_count = db.query(Student).filter(Student.school_id == s.id, Student.is_active == True).count()
-    t_count = db.query(User).filter(User.school_id == s.id, User.role == "teacher", User.is_active == True).count()
+    t_count = db.query(Teacher).filter(Teacher.school_id == s.id, Teacher.is_active == True).count()
     return {
         "id": s.id,
         "school_code": s.school_code,
@@ -145,9 +145,11 @@ async def get_institution_class_breakdown(id: int, cid: int, user: User = Depend
 
 @router.get("/institutions/{id}/teachers")
 async def list_institution_teachers(id: int, user: User = Depends(state_access_guard), db: Session = Depends(get_db)):
-    teachers = db.query(User).filter(User.school_id == id, User.role == "teacher").all()
+    teachers = db.query(Teacher).filter(Teacher.school_id == id).all()
     return [{
         "id": t.id,
+        "user_id": t.user_id,
+        "photo_url": t.photo_url,
         "first_name": t.first_name,
         "last_name": t.last_name,
         "email": t.email,
@@ -159,11 +161,13 @@ async def list_institution_teachers(id: int, user: User = Depends(state_access_g
 
 @router.get("/teachers/{id}")
 async def get_state_teacher(id: int, user: User = Depends(state_access_guard), db: Session = Depends(get_db)):
-    t = db.query(User).filter(User.id == id, User.role == "teacher").first()
+    t = db.query(Teacher).filter(Teacher.id == id).first()
     if not t:
         raise HTTPException(404, "Teacher not found")
     return {
         "id": t.id,
+        "user_id": t.user_id,
+        "photo_url": t.photo_url,
         "school_id": t.school_id,
         "school_name": t.school.school_name if t.school else None,
         "first_name": t.first_name,
@@ -411,7 +415,7 @@ async def analytics_summary(user: User = Depends(state_access_guard), db: Sessio
     today = date.today()
     total_schools = db.query(PrivateSchool).count()
     total_students = db.query(Student).filter(Student.is_active == True).count()
-    total_teachers = db.query(User).filter(User.role == "teacher", User.is_active == True).count()
+    total_teachers = db.query(Teacher).filter(Teacher.is_active == True).count()
     active_alarms = db.query(DailySubmissionLog).filter(DailySubmissionLog.log_date == today, DailySubmissionLog.alarm_triggered == True).count()
     submitted = db.query(DailySubmissionLog).filter(DailySubmissionLog.log_date == today, DailySubmissionLog.attendance_submitted == True).count()
     rate = round((submitted / max(1, total_schools)) * 100.0, 1) if total_schools > 0 else 100.0

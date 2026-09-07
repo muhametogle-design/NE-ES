@@ -18,7 +18,7 @@ export function TeacherPortal() {
 
   useEffect(() => {
     if (user?.id) {
-      api.getTimetable(`teacher_id=${user.id}`)
+      api.getTimetable()
         .then(setTimetable)
         .catch(console.error);
     }

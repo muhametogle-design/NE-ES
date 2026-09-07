@@ -13,11 +13,13 @@ web/dist/
 frontend/dist/
 
 # Environment & Data
+.venv/
 .env
 *.sqlite
 *.db
 data/
 backups/
+uploads/
 logs/
 
 # IDE

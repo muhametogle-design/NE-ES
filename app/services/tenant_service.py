@@ -1,10 +1,10 @@
 import random
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, text
+from sqlalchemy import text, func
 from fastapi import HTTPException
 from app.models.tenancy import PrivateSchool, SchoolRollSequence, User, AcademicYear
-from app.models.academic import SchoolClass, Subject, TeachingAssignment, Student
+from app.models.academic import SchoolClass, Subject, Teacher, TeachingAssignment, Student
 from app.models.finance import TuitionRate
 from app.core.security import hash_password
 
@@ -181,7 +181,7 @@ class TenantService:
         return school
 
     @staticmethod
-    def create_setup_teachers(db: Session, school_id: int, domain: str) -> List[User]:
+    def create_setup_teachers(db: Session, school_id: int, domain: str) -> List[Teacher]:
         teacher_data = [
             {"first": "Ayaan", "last": "Hassan", "qual": "B.Ed Languages, University of Hargeisa", "subjects": ["SOM", "HIS"], "dept_head": True},
             {"first": "Mohamed", "last": "Ali", "qual": "B.Sc Mathematics, University of Somalia", "subjects": ["MAT"], "dept_head": True},
@@ -196,33 +196,49 @@ class TenantService:
         teachers = []
         for data in teacher_data:
             email = f"{data['first'].lower()}.{data['last'].lower()}@{domain}"
-            # Check if teacher exists
-            existing = db.query(User).filter(User.email == email).first()
-            if existing:
-                teachers.append(existing)
-                continue
-
-            teacher = User(
-                school_id=school_id,
-                email=email,
-                password_hash=hash_password("Teach@2026"),
-                role="teacher",
-                first_name=data["first"],
-                last_name=data["last"],
-                qualifications=data["qual"],
-                designation=f"Senior Teacher ({', '.join(data['subjects'])})",
-                is_department_head=data["dept_head"],
-                staff_identifier=TenantService.generate_staff_id("NE-TID"),
-            )
-            db.add(teacher)
+            account = db.query(User).filter(User.email == email).first()
+            if account is None:
+                account = User(
+                    school_id=school_id,
+                    email=email,
+                    password_hash=hash_password("Teach@2026"),
+                    role="teacher",
+                    first_name=data["first"],
+                    last_name=data["last"],
+                    qualifications=data["qual"],
+                    designation=f"Senior Teacher ({', '.join(data['subjects'])})",
+                    is_department_head=data["dept_head"],
+                    staff_identifier=TenantService.generate_staff_id("NE-TID"),
+                )
+                db.add(account)
+                db.flush()
+            teacher = db.query(Teacher).filter_by(user_id=account.id).first()
+            if teacher is None:
+                # Preserve the demo's existing public staff IDs where possible,
+                # just as the data migration does. Real profiles and users have
+                # independent primary-key sequences; callers use teacher.user_id.
+                next_id = (db.query(func.max(Teacher.id)).scalar() or 0) + 1
+                teacher = Teacher(
+                    id=max(account.id, next_id), school_id=school_id, user=account,
+                    email=account.email, first_name=account.first_name, last_name=account.last_name,
+                    qualifications=account.qualifications, designation=account.designation,
+                    is_department_head=bool(account.is_department_head),
+                    staff_identifier=account.staff_identifier,
+                )
+                db.add(teacher)
+                db.flush()
             teachers.append(teacher)
 
-        db.flush()
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(text(
+                "SELECT setval(pg_get_serial_sequence('teachers', 'id'), "
+                "(SELECT MAX(id) FROM teachers), true)"
+            ))
         return teachers
 
     @staticmethod
     def create_full_assignments(db: Session, school_id: int, classes: List[SchoolClass],
-                                subjects: List[Subject], teachers: List[User]):
+                                subjects: List[Subject], teachers: List[Teacher]):
         for school_class in classes:
             for subject in subjects:
                 if subject.level == school_class.class_level:

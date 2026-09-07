@@ -1,9 +1,13 @@
-import pytest
-from app.models.academic import SchoolClass, Subject
+from app.models.academic import Teacher, TeachingAssignment
+from app.models.tenancy import User
 
 def test_syllabus_plan_lifecycle_and_pacing(client, school_manager_headers, teacher_headers, db_session):
-    school_class = db_session.query(SchoolClass).filter(SchoolClass.school_id == 1).first()
-    subject = db_session.query(Subject).filter(Subject.school_id == 1).first()
+    # A positive teacher lifecycle must use an explicitly assigned pair, not
+    # whichever subject happens to sort first in this school's catalog.
+    user = db_session.query(User).filter_by(school_id=1, role="teacher").first()
+    assignment = db_session.query(TeachingAssignment).join(Teacher).filter(Teacher.user_id == user.id).first()
+    school_class = assignment.class_ref
+    subject = assignment.subject
 
     # 1. Create Plan with 4 units, 50% midterm target
     plan_res = client.post("/api/v1/school/syllabus/plans", headers=school_manager_headers, json={

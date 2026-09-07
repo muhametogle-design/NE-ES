@@ -33,6 +33,7 @@ FROM private_schools ps
 LEFT JOIN daily_submission_logs dsl ON dsl.school_id = ps.id;
 
 -- View 3: Teacher Workload and Department Assignments
+-- Requires the photos/teacher-profile Alembic migration (83dda6195453).
 CREATE OR REPLACE VIEW teacher_workload_summary AS
 SELECT
     u.id AS teacher_id,
@@ -45,11 +46,11 @@ SELECT
     u.is_department_head,
     COUNT(DISTINCT ta.id) AS assigned_courses,
     COUNT(DISTINCT ts.id) AS weekly_periods
-FROM users u
+FROM teachers u
 JOIN private_schools ps ON ps.id = u.school_id
 LEFT JOIN teaching_assignments ta ON ta.teacher_id = u.id
 LEFT JOIN timetable_slots ts ON ts.teacher_id = u.id
-WHERE u.role = 'teacher' AND u.is_active = TRUE
+WHERE u.is_active = TRUE
 GROUP BY u.id, u.school_id, ps.school_code, u.first_name, u.last_name, u.email, u.staff_identifier, u.is_department_head;
 
 -- View 4: Syllabus Completion Rate Summary

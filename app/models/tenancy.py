@@ -28,6 +28,7 @@ class PrivateSchool(Base):
 
     # Relationships
     district = relationship("District", back_populates="schools")
+    teachers = relationship("Teacher", back_populates="school", cascade="all, delete-orphan")
     users = relationship("User", back_populates="school", cascade="all, delete-orphan")
     classes = relationship("SchoolClass", back_populates="school", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="school", cascade="all, delete-orphan")
@@ -64,8 +65,26 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     school = relationship("PrivateSchool", back_populates="users")
-    teaching_assignments = relationship("TeachingAssignment", back_populates="teacher")
-    absences = relationship("TeacherAbsence", back_populates="teacher")
+    teacher = relationship("Teacher", back_populates="user", uselist=False, passive_deletes=True)
+    # Compatibility read views for callers that previously used User as Teacher.
+    teaching_assignments = relationship(
+        "TeachingAssignment", secondary="teachers",
+        primaryjoin="User.id == Teacher.user_id",
+        secondaryjoin="Teacher.id == TeachingAssignment.teacher_id", viewonly=True,
+    )
+    absences = relationship(
+        "TeacherAbsence", secondary="teachers",
+        primaryjoin="User.id == Teacher.user_id",
+        secondaryjoin="Teacher.id == TeacherAbsence.teacher_id", viewonly=True,
+    )
+
+    @property
+    def teacher_id(self):
+        return self.teacher.id if self.teacher else None
+
+    @property
+    def photo_url(self):
+        return self.teacher.photo_url if self.teacher else None
 
 class AcademicYear(Base):
     __tablename__ = "academic_years"

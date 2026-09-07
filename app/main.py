@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -15,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.school import router as school_router
 from app.api.state import router as state_router
 from app.api.v1 import v1_router
+from app.api.v1.media import UPLOADS_DIR
 from app.api.ws import router as ws_router
 from app.services.scheduler import compliance_scheduler, backup_scheduler
 from app.services.seed import seed_demo_data
@@ -39,6 +41,8 @@ def is_test_environment() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # StaticFiles defers its directory check until startup has created this tree.
+    Path(UPLOADS_DIR, "photos").mkdir(parents=True, exist_ok=True)
     manage_database = not is_test_environment()
 
     # 1. Initialize DB (skipped under APP_ENV=test/testing — the test suite owns its own schema)
@@ -143,6 +147,10 @@ app.include_router(ws_router, prefix="/ws")
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "service": "NE-EMIS", "version": "1.0.0"}
+
+# Mount uploads before the SPA catch-all, including when web/dist is absent.
+# check_dir=False allows importing the app before the first startup creates it.
+app.mount("/static", StaticFiles(directory=str(UPLOADS_DIR), check_dir=False), name="static")
 
 # Static / SPA Mounting
 web_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist")
