@@ -91,6 +91,20 @@ def get_database_url() -> str:
 
 DATABASE_URL = get_database_url()
 
+
+def ensure_sqlite_directory(url: str) -> None:
+    """Create the parent directory of a file-based SQLite database.
+
+    ``app.core.db`` does this for the API, but Alembic builds its own engine, so
+    on a fresh clone ``alembic upgrade head`` would otherwise fail with
+    "unable to open database file" because ``./data/`` does not exist yet.
+    """
+    database = make_url(url).database
+    if not database or database == ":memory:":
+        return
+    Path(database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+
 # Override the (blank) alembic.ini value so engine_from_config() uses our URL.
 # ConfigParser treats '%' as an interpolation marker, so a literal '%' (e.g. a
 # URL-encoded password such as 'p%40ss') must be escaped as '%%' when stored;
@@ -104,6 +118,8 @@ logger.info(
 
 # SQLite needs batch mode (no native ALTER) and relaxed thread checks.
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
+if IS_SQLITE:
+    ensure_sqlite_directory(DATABASE_URL)
 
 
 def run_migrations_offline() -> None:
