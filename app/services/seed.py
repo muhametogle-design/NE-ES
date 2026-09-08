@@ -6,6 +6,7 @@ from app.core.security import hash_password
 from app.models.tenancy import PrivateSchool, User
 from app.models.compliance import DailySubmissionLog, CommunicationLog
 from app.services.tenant_service import TenantService
+from app.services.teacher_service import TeacherService
 
 def seed_demo_data(db: Session):
     # 1. Clean legacy placeholders if present
@@ -50,6 +51,11 @@ def seed_demo_data(db: Session):
     # 3. Provision all 5 official private schools
     for tenant_data in TenantService.TENANTS:
         TenantService.provision_school_template(db, tenant_data, state_admin_id=state_admin.id)
+
+    # 3b. Bind every teacher account to a staff profile and mirror its
+    #     class-level teaching assignments into the subject-level mapping used
+    #     for teacher scoping (/api/v1/subjects, /api/v1/classrooms).
+    TeacherService.sync_profiles_from_accounts(db)
 
     # 4. Set up realistic compliance state
     try:

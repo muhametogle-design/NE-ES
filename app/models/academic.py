@@ -48,6 +48,14 @@ class SchoolClass(Base):
     assignments = relationship("TeachingAssignment", back_populates="class_ref", cascade="all, delete-orphan")
     timetable_slots = relationship("TimetableSlot", back_populates="class_ref", cascade="all, delete-orphan")
 
+    @property
+    def label(self) -> str:
+        """Display name used across the API and the web client (``Class 5A``)."""
+        return f"Class {self.class_level}{self.stream}"
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<SchoolClass {self.label} school_id={self.school_id}>"
+
 class Subject(Base):
     __tablename__ = "subjects"
 
@@ -66,6 +74,9 @@ class Subject(Base):
     timetable_slots = relationship("TimetableSlot", back_populates="subject", cascade="all, delete-orphan")
     grades = relationship("StudentGrade", back_populates="subject", cascade="all, delete-orphan")
     attendance = relationship("SubjectAttendance", back_populates="subject", cascade="all, delete-orphan")
+    # Subject-level teacher ownership (see app.models.auth.TeacherSubject).
+    teacher_links = relationship("TeacherSubject", back_populates="subject", cascade="all, delete-orphan")
+    teachers = relationship("Teacher", secondary="teacher_subjects", viewonly=True)
 
 class TeachingAssignment(Base):
     __tablename__ = "teaching_assignments"
@@ -119,6 +130,9 @@ class Student(Base):
     last_name = Column(String, nullable=False)
     gender = Column(String, nullable=False)
     date_of_birth = Column(Date, nullable=True)
+    # Portrait location: absolute https:// URL or a local /media/... path
+    # returned by POST /api/v1/media/upload (length enforced by the schemas).
+    photo_url = Column(String(500), nullable=True)
     class_id = Column(Integer, ForeignKey("school_classes.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())

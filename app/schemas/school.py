@@ -2,105 +2,36 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 
-# ----------------- Students -----------------
-class StudentBase(BaseModel):
-    first_name: str
-    last_name: str
-    gender: str
-    date_of_birth: Optional[date] = None
-    class_id: Optional[int] = None
+# ---------------------------------------------------------------------------
+# Students, classrooms, subjects and teachers now live in dedicated schema
+# modules (``app.schemas.student`` / ``classroom`` / ``subject`` / ``teacher``)
+# which carry the ``photo_url`` and teacher-binding fields. They are
+# re-exported here under the historical names so existing imports —
+# ``app.api.school`` and ``app.schemas.__init__`` — keep working.
+# ---------------------------------------------------------------------------
+from app.schemas.student import (  # noqa: F401
+    StudentBase, StudentCreate, StudentUpdate, StudentResponse,
+)
+from app.schemas.classroom import (  # noqa: F401
+    ClassroomBase, ClassroomCreate, ClassroomUpdate,
+    ClassroomResponse, ClassroomDetailResponse,
+)
+from app.schemas.subject import (  # noqa: F401
+    SubjectBase, SubjectCreate, SubjectUpdate, SubjectResponse,
+    SubjectBrief, SubjectTeacherSummary, SubjectTeacherAssignRequest,
+)
+from app.schemas.teacher import (  # noqa: F401
+    TeacherBase, TeacherUserProvision,
+    TeacherAccountCreate as TeacherCreate,
+    TeacherAccountUpdate as TeacherUpdate,
+    TeacherAccountResponse as TeacherResponse,
+)
 
-class StudentCreate(StudentBase):
-    pass
+# Historical aliases used by ``/api/v1/school/classes``.
+ClassCreate = ClassroomCreate
+ClassResponse = ClassroomResponse
 
-class StudentUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    gender: Optional[str] = None
-    date_of_birth: Optional[date] = None
-    class_id: Optional[int] = None
-    is_active: Optional[bool] = None
-
-class StudentResponse(StudentBase):
-    id: int
-    school_id: int
-    national_student_id: str
-    roll_number: str
-    is_active: bool
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-# ----------------- Classes & Subjects -----------------
-class ClassCreate(BaseModel):
-    class_level: int
-    stream: str
-    academic_year_id: Optional[int] = None
-
-class ClassResponse(BaseModel):
-    id: int
-    school_id: int
-    class_level: int
-    stream: str
-    academic_year_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
-
-class SubjectCreate(BaseModel):
-    code: str
-    name: str
-    level: int
-
-class SubjectResponse(BaseModel):
-    id: int
-    school_id: int
-    code: str
-    name: str
-    level: int
-
-    class Config:
-        from_attributes = True
-
-# ----------------- Teachers & Assignments -----------------
-class TeacherCreate(BaseModel):
-    email: str
-    password: str
-    first_name: str
-    last_name: str
-    phone: Optional[str] = None
-    qualifications: Optional[str] = None
-    designation: Optional[str] = None
-    bio: Optional[str] = None
-    is_department_head: bool = False
-
-class TeacherUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    phone: Optional[str] = None
-    qualifications: Optional[str] = None
-    designation: Optional[str] = None
-    bio: Optional[str] = None
-    is_department_head: Optional[bool] = None
-
-class TeacherResponse(BaseModel):
-    id: int
-    school_id: Optional[int] = None
-    email: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    staff_identifier: Optional[str] = None
-    phone: Optional[str] = None
-    qualifications: Optional[str] = None
-    designation: Optional[str] = None
-    bio: Optional[str] = None
-    is_department_head: bool = False
-    is_active: bool = True
-
-    class Config:
-        from_attributes = True
-
+# ----------------- Assignments -----------------
 class AssignmentCreate(BaseModel):
     teacher_id: int
     class_id: int

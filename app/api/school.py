@@ -4,12 +4,13 @@ from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
-from app.api.deps import require_school_tenant, financial_firewall, get_current_user
+from app.api.deps import (
+    require_school_tenant, require_school_manager, financial_firewall, get_current_user
+)
 from app.core.db import get_db
-from app.core.security import hash_password
 from app.models.tenancy import User, PrivateSchool, AcademicYear
 from app.models.academic import (
     Student, SchoolClass, Subject, TeachingAssignment, TimetableSlot,
@@ -41,6 +42,8 @@ from app.schemas.school import (
 )
 from app.schemas.common import PaginatedResponse, MessageResponse
 from app.services.tenant_service import TenantService
+from app.services.teacher_scope import TeacherScope
+from app.services.teacher_service import TeacherService
 from app.services.academic_service import AcademicService
 from app.services.finance_service import FinanceService
 from app.services.substitution_service import SubstitutionService
@@ -100,6 +103,7 @@ async def create_student(
         last_name=student.last_name,
         gender=student.gender,
         date_of_birth=student.date_of_birth,
+        photo_url=student.photo_url,
         class_id=student.class_id,
         is_active=True
     )
@@ -171,10 +175,14 @@ async def delete_student(ne_sid: str, user: User = Depends(require_school_tenant
 # ==========================================
 @router.get("/classes", response_model=List[ClassResponse])
 async def list_classes(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    return db.query(SchoolClass).filter(SchoolClass.school_id == user.school_id).order_by(SchoolClass.class_level, SchoolClass.stream).all()
+    # Teachers only receive the classrooms they are assigned to (see
+    # /api/v1/classrooms for the richer, roster-aware version).
+    query = db.query(SchoolClass).filter(SchoolClass.school_id == user.school_id)
+    query = TeacherScope.scope_class_query(db, user, query)
+    return query.order_by(SchoolClass.class_level, SchoolClass.stream).all()
 
 @router.post("/classes", response_model=ClassResponse, status_code=201)
-async def create_class(data: ClassCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def create_class(data: ClassCreate, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     existing = db.query(SchoolClass).filter_by(
         school_id=user.school_id,
         class_level=data.class_level,
@@ -199,6 +207,7 @@ async def get_class(id: int, user: User = Depends(require_school_tenant), db: Se
     c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
     if not c:
         raise HTTPException(404, "Class not found")
+    TeacherScope.ensure_class_access(db, user, c)
     return c
 
 @router.get("/classes/{id}/breakdown")
@@ -206,6 +215,7 @@ async def class_breakdown(id: int, user: User = Depends(require_school_tenant), 
     c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
     if not c:
         raise HTTPException(404, "Class not found")
+    TeacherScope.ensure_class_access(db, user, c)
 
     students = db.query(Student).filter_by(class_id=id, school_id=user.school_id, is_active=True).all()
     male_count = sum(1 for s in students if s.gender.lower() == "male")
@@ -237,17 +247,23 @@ async def list_class_subjects(id: int, user: User = Depends(require_school_tenan
     c = db.query(SchoolClass).filter_by(id=id, school_id=user.school_id).first()
     if not c:
         raise HTTPException(404, "Class not found")
-    return db.query(Subject).filter(Subject.school_id == user.school_id, Subject.level == c.class_level).all()
+    TeacherScope.ensure_class_access(db, user, c)
+
+    query = db.query(Subject).filter(Subject.school_id == user.school_id, Subject.level == c.class_level)
+    query = TeacherScope.scope_subject_query(db, user, query)
+    return query.all()
 
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def list_subjects(level: Optional[int] = None, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
     query = db.query(Subject).filter(Subject.school_id == user.school_id)
+    # Subject-level scoping: a teacher only sees the subjects assigned to them.
+    query = TeacherScope.scope_subject_query(db, user, query)
     if level:
         query = query.filter(Subject.level == level)
     return query.order_by(Subject.level, Subject.code).all()
 
 @router.post("/subjects", response_model=SubjectResponse, status_code=201)
-async def create_subject(data: SubjectCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def create_subject(data: SubjectCreate, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     existing = db.query(Subject).filter_by(school_id=user.school_id, code=data.code).first()
     if existing:
         raise HTTPException(400, "Subject code already exists in this school")
@@ -263,54 +279,77 @@ async def create_subject(data: SubjectCreate, user: User = Depends(require_schoo
 # ==========================================
 @router.get("/teachers", response_model=List[TeacherResponse])
 async def list_teachers(user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    return db.query(User).filter(User.school_id == user.school_id, User.role == "teacher").all()
+    teachers = (
+        db.query(User)
+        .options(joinedload(User.teacher_profile))
+        .filter(User.school_id == user.school_id, User.role == "teacher")
+        .order_by(User.last_name, User.first_name)
+        .all()
+    )
+    return [TeacherService.account_payload(t) for t in teachers]
 
 @router.post("/teachers", response_model=TeacherResponse, status_code=201)
-async def create_teacher(data: TeacherCreate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
+async def create_teacher(data: TeacherCreate, user: User = Depends(require_school_manager), db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
         raise HTTPException(400, "User with this email already exists")
 
-    staff_id = TenantService.generate_staff_id("NE-TID")
-    teacher = User(
+    teacher = TeacherService.provision_account(
+        db,
         school_id=user.school_id,
-        email=data.email,
-        password_hash=hash_password(data.password),
-        role="teacher",
+        email=str(data.email),
+        password=data.password,
         first_name=data.first_name,
         last_name=data.last_name,
-        staff_identifier=staff_id,
         phone=data.phone,
         qualifications=data.qualifications,
         designation=data.designation or "Teacher",
         bio=data.bio,
         is_department_head=data.is_department_head,
-        is_active=True
+        photo_url=data.photo_url,
     )
-    db.add(teacher)
+    # Bind the staff profile used for subject-level scoping (/api/v1/teachers).
+    if data.create_profile:
+        TeacherService.ensure_profile_for_user(db, teacher, commit=False)
     db.commit()
     db.refresh(teacher)
-    return teacher
+    return TeacherService.account_payload(teacher)
 
 @router.get("/teachers/{id}", response_model=TeacherResponse)
 async def get_teacher(id: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
     t = db.query(User).filter(User.id == id, User.school_id == user.school_id, User.role == "teacher").first()
     if not t:
         raise HTTPException(404, "Teacher not found in this school")
-    return t
+    return TeacherService.account_payload(t)
 
 @router.put("/teachers/{id}", response_model=TeacherResponse)
 async def update_teacher(id: int, data: TeacherUpdate, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):
-    t = db.query(User).filter(User.id == id, User.school_id == user.school_id).first()
+    t = db.query(User).filter(User.id == id, User.school_id == user.school_id, User.role == "teacher").first()
     if not t:
         raise HTTPException(404, "Teacher not found in this school")
 
+    # Teachers may only touch their own record, and only self-service fields.
+    self_service = not TeacherScope.is_manager(user)
+    if self_service and t.id != user.id:
+        raise HTTPException(403, "Teachers may only update their own staff record")
+
     update_dict = data.model_dump(exclude_unset=True)
+    allowed = TeacherService.SELF_SERVICE_FIELDS if self_service else TeacherService.ACCOUNT_FIELDS
+    rejected = sorted(key for key in update_dict if key not in allowed)
+    if rejected:
+        raise HTTPException(
+            403,
+            f"Field(s) {', '.join(rejected)} can only be changed by a school manager"
+        )
     for k, v in update_dict.items():
         setattr(t, k, v)
+
+    # Mirror the portrait onto the bound staff profile.
+    if "photo_url" in update_dict:
+        TeacherService.sync_photo(db, user=t, photo_url=update_dict["photo_url"])
     db.commit()
     db.refresh(t)
-    return t
+    return TeacherService.account_payload(t)
 
 @router.get("/classes/{cid}/subjects/{sid}/assignment")
 async def get_class_subject_assignment(cid: int, sid: int, user: User = Depends(require_school_tenant), db: Session = Depends(get_db)):

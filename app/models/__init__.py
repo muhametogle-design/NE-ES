@@ -1,5 +1,6 @@
 from app.models.base import Base
 from app.models.tenancy import PrivateSchool, SchoolRollSequence, User, AcademicYear
+from app.models.auth import Teacher, TeacherSubject
 from app.models.academic import (
     District, SchoolClass, Subject, TeachingAssignment, TimetableSlot,
     Student, StudentGrade, SubjectAttendance, LiveAttendance
@@ -21,6 +22,8 @@ all_models = [
     SchoolRollSequence,
     User,
     AcademicYear,
+    Teacher,
+    TeacherSubject,
     SchoolClass,
     Subject,
     TeachingAssignment,
@@ -56,6 +59,8 @@ __all__ = [
     "SchoolRollSequence",
     "User",
     "AcademicYear",
+    "Teacher",
+    "TeacherSubject",
     "SchoolClass",
     "Subject",
     "TeachingAssignment",

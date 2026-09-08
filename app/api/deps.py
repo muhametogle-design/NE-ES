@@ -106,6 +106,25 @@ def require_school_tenant(user: User = Depends(get_current_user)) -> User:
         )
     return user
 
+
+def require_school_manager(user: User = Depends(require_school_tenant)) -> User:
+    """School-tenant access restricted to the manager role.
+
+    Used for structural writes (creating subjects, classrooms or staff
+    profiles) that a subject-scoped teacher must never perform; teachers keep
+    read access to their own assignments and write access to the subjects they
+    own (see :class:`app.services.teacher_scope.TeacherScope`).
+    """
+    if user.role != "school_manager":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Access denied: role '{user.role}' cannot perform school administration "
+                "actions (school_manager required)"
+            ),
+        )
+    return user
+
 def state_access_guard(user: User = Depends(get_current_user)) -> User:
     if user.role not in ["state_admin", "inspector"]:
         raise HTTPException(

@@ -29,6 +29,7 @@ class PrivateSchool(Base):
     # Relationships
     district = relationship("District", back_populates="schools")
     users = relationship("User", back_populates="school", cascade="all, delete-orphan")
+    teachers = relationship("Teacher", back_populates="school", cascade="all, delete-orphan")
     classes = relationship("SchoolClass", back_populates="school", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="school", cascade="all, delete-orphan")
     roll_sequence = relationship("SchoolRollSequence", back_populates="school", uselist=False, cascade="all, delete-orphan")
@@ -60,12 +61,28 @@ class User(Base):
     qualifications = Column(String)
     designation = Column(String)
     bio = Column(Text)
+    # Account-level portrait. Kept in sync with ``Teacher.photo_url`` for staff
+    # accounts by ``TeacherService`` so both the account endpoints
+    # (``/api/v1/school/teachers``) and the staff-profile endpoints
+    # (``/api/v1/teachers``) serve the same image.
+    photo_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
     school = relationship("PrivateSchool", back_populates="users")
     teaching_assignments = relationship("TeachingAssignment", back_populates="teacher")
     absences = relationship("TeacherAbsence", back_populates="teacher")
+    # Staff profile bound to this account (``teachers.user_id``). No cascade:
+    # removing a login must SET NULL on the profile, not delete it.
+    teacher_profile = relationship("Teacher", back_populates="user", uselist=False)
+
+    @property
+    def is_teacher(self) -> bool:
+        return self.role == "teacher"
+
+    @property
+    def is_school_manager(self) -> bool:
+        return self.role == "school_manager"
 
 class AcademicYear(Base):
     __tablename__ = "academic_years"

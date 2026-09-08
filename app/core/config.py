@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 5
     LOGIN_RATE_WINDOW_SECONDS: int = 300
 
+    # --- Photo / media uploads -----------------------------------------
+    # Uploads are written under MEDIA_ROOT and served back from the public
+    # MEDIA_URL_PREFIX (see app/api/v1/media.py). Keep both inside the
+    # .gitignored data/ directory unless an object-storage CDN is configured.
+    MEDIA_ROOT: str = "data/media"
+    MEDIA_URL_PREFIX: str = "/media"
+    MAX_UPLOAD_SIZE_MB: int = 5
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

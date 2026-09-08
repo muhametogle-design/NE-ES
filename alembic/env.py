@@ -15,8 +15,8 @@ entry in ``alembic.ini`` is intentionally left blank.
 
 Target metadata:
     ``app.models.base.Base.metadata`` — importing the ``app.models`` package
-    registers every model (tenancy, academic, finance, compliance, backups,
-    biometrics, absence, syllabus) on the declarative registry before
+    registers every model (tenancy, academic, auth, finance, compliance,
+    backups, biometrics, absence, syllabus) on the declarative registry before
     autogenerate/upgrade run.
 """
 from __future__ import annotations
@@ -48,6 +48,7 @@ from app.models import Base  # noqa: E402  (re-exported from app.models.base)
 from app.models import (  # noqa: E402,F401
     absence,
     academic,
+    auth,
     backups,
     base,
     biometric,

@@ -24,6 +24,10 @@ services:
       - postgres
     ports:
       - "8000:8000"
+    volumes:
+      # Uploaded student/teacher portraits must outlive the container.
+      - media_uploads:/app/data/media
 
 volumes:
   postgres_data:
+  media_uploads:

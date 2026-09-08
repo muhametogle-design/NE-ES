@@ -14,7 +14,7 @@ from app.core.ws import ws_manager
 from app.api.auth import router as auth_router
 from app.api.school import router as school_router
 from app.api.state import router as state_router
-from app.api.v1 import v1_router
+from app.api.v1 import media_files_router, v1_router
 from app.api.ws import router as ws_router
 from app.services.scheduler import compliance_scheduler, backup_scheduler
 from app.services.seed import seed_demo_data
@@ -137,6 +137,8 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(school_router, prefix="/api")
 app.include_router(state_router, prefix="/api")
 app.include_router(v1_router, prefix="/api")
+# Uploaded portraits are served from /media/... (settings.MEDIA_URL_PREFIX).
+app.include_router(media_files_router)
 app.include_router(ws_router, prefix="/ws")
 
 @app.get("/health")

@@ -49,6 +49,20 @@ def isolated_backup_dir(tmp_path_factory):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def isolated_media_dir(tmp_path_factory):
+    """Write photo uploads produced by the tests to a throwaway directory.
+
+    ``MediaService`` reads ``settings.MEDIA_ROOT`` at call time, so pointing it
+    at pytest's temp dir keeps the real (gitignored) ``data/media/`` free of
+    test artefacts while still exercising the upload/serving round trip.
+    """
+    original = settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = str(tmp_path_factory.mktemp("media"))
+    yield settings.MEDIA_ROOT
+    settings.MEDIA_ROOT = original
+
+
+@pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
@@ -112,3 +126,20 @@ def teacher_headers(db_session):
     user = db_session.query(User).filter(User.school_id == school.id, User.role == "teacher").first()
     token = create_access_token({"sub": str(user.id), "role": user.role, "school_id": school.id})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers():
+    """Build an Authorization header for any ``User`` row.
+
+    Used by tests that need two teachers of the same tenant (subject scoping)
+    or a freshly provisioned account, which the role-specific fixtures above
+    cannot express.
+    """
+    def _make(user: User) -> dict:
+        token = create_access_token(
+            {"sub": str(user.id), "role": user.role, "school_id": user.school_id}
+        )
+        return {"Authorization": f"Bearer {token}"}
+
+    return _make
