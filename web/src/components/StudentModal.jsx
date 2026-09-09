@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from './ui/Button';
 import { Input, Select } from './ui/Input';
+import { PhotoUploader } from './PhotoUploader';
 import { X } from 'lucide-react';
 
 export function StudentModal({ isOpen, onClose, onSave, classes = [], initialData = null }) {
@@ -10,6 +11,7 @@ export function StudentModal({ isOpen, onClose, onSave, classes = [], initialDat
     gender: initialData?.gender || 'Male',
     date_of_birth: initialData?.date_of_birth || '',
     class_id: initialData?.class_id || (classes[0]?.id || ''),
+    photo_url: initialData?.photo_url || null,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -53,6 +55,12 @@ export function StudentModal({ isOpen, onClose, onSave, classes = [], initialDat
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-lg">{error}</div>}
+
+          <PhotoUploader
+            value={formData.photo_url}
+            onChange={(url) => setFormData({ ...formData, photo_url: url })}
+            label="Student Photo"
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <Input
