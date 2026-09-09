@@ -150,7 +150,17 @@ export function Students() {
               students.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono font-bold text-slate-900">{s.roll_number}</td>
-                  <td className="px-4 py-3 font-semibold text-slate-800">{s.first_name} {s.last_name}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar
+                        photoUrl={s.photo_url}
+                        firstName={s.first_name}
+                        lastName={s.last_name}
+                        className="h-8 w-8 text-[10px]"
+                      />
+                      <span className="font-semibold text-slate-800">{s.first_name} {s.last_name}</span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{s.gender}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {classes.find((c) => c.id === s.class_id)

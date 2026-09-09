@@ -87,12 +87,20 @@ export function InstitutionDetail() {
           <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
             {teachers.map((t) => (
               <div key={t.id} className="py-3 flex items-center justify-between text-xs">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900">{t.first_name} {t.last_name}</span>
-                    {t.is_department_head && <Badge variant="purple" size="sm">Dept Head</Badge>}
+                <div className="flex items-center gap-2.5">
+                  <Avatar
+                    photoUrl={t.photo_url}
+                    firstName={t.first_name}
+                    lastName={t.last_name}
+                    className="h-9 w-9 text-xs"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">{t.first_name} {t.last_name}</span>
+                      {t.is_department_head && <Badge variant="purple" size="sm">Dept Head</Badge>}
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-500">{t.staff_identifier}</span>
                   </div>
-                  <span className="text-[11px] font-mono text-slate-500">{t.staff_identifier}</span>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => setSelectedTeacher(t)}>
                   View Profile

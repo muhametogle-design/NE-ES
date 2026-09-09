@@ -22,9 +22,13 @@ export function TeacherProfileModal({ isOpen, onClose, teacher }) {
 
         <div className="p-6 space-y-4">
           <div className="flex items-center gap-4 border-b border-slate-100 pb-4">
-            <div className="h-16 w-16 bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center font-bold text-2xl border-2 border-emerald-300">
-              {teacher.first_name?.[0]}{teacher.last_name?.[0]}
-            </div>
+            <Avatar
+              photoUrl={teacher.photo_url}
+              firstName={teacher.first_name}
+              lastName={teacher.last_name}
+              className="h-16 w-16 text-2xl border-2 border-emerald-300"
+              fallbackClassName="bg-emerald-100 text-emerald-800"
+            />
             <div>
               <h4 className="text-xl font-bold text-slate-900">
                 {teacher.first_name} {teacher.last_name}
