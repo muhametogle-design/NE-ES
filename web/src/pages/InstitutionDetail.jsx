@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { TeacherProfileModal } from '../components/TeacherProfileModal';
+import { Avatar } from '../components/Avatar';
 import { ArrowLeft, Building2, Users, BookOpen, UserCheck, ShieldCheck } from 'lucide-react';
 
 export function InstitutionDetail() {

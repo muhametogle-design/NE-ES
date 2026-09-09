@@ -39,6 +39,40 @@ export async function apiRequest(endpoint, options = {}) {
   return data;
 }
 
+export async function uploadPhoto(file) {
+  // Multipart upload: unlike apiRequest, this must NOT force a JSON
+  // Content-Type header — the browser sets the multipart boundary itself.
+  const token = localStorage.getItem('access_token');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/v1/media/upload`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    if (!window.location.pathname.includes('/login')) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+  }
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = data?.detail || data?.message || response.statusText || 'Photo upload failed';
+    throw new Error(errorMsg);
+  }
+
+  return data;
+}
+
 export const api = {
   // Auth
   login: (credentials) => apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),

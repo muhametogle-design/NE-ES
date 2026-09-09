@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
+import { Avatar } from './Avatar';
 import { X, Mail, Phone, Award, BookOpen, ShieldCheck } from 'lucide-react';
 
 export function TeacherProfileModal({ isOpen, onClose, teacher }) {
