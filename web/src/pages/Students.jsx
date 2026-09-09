@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { StudentModal } from '../components/StudentModal';
+import { Avatar } from '../components/Avatar';
 import { Search, UserPlus, Trash2, Edit2, CheckCircle2 } from 'lucide-react';
 
 export function Students() {

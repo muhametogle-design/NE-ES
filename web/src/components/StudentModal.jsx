@@ -29,6 +29,7 @@ export function StudentModal({ isOpen, onClose, onSave, classes = [], initialDat
         ...formData,
         class_id: formData.class_id ? parseInt(formData.class_id) : null,
         date_of_birth: formData.date_of_birth || null,
+        photo_url: formData.photo_url || null,
       });
       onClose();
     } catch (err) {
